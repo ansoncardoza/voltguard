@@ -10,7 +10,7 @@
 
 ## 
 
-## 1\. Project Overview: VoltGuard
+## Project Overview: VoltGuard
 
 VoltGuard is a Physics-Aware Industrial Control System (ICS) and Supervisory Control and Data Acquisition (SCADA) Intrusion Detection System designed to identify suspicious activities by analysing both cybersecurity events and industrial process behaviour.
 
