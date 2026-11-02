@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "source": "VoltGuard Abnormal Test Simulator",
+  "environment": "LOCAL_TEST",
+  "transaction_id": 1002,
+  "unit_id": 1,
+  "process_state": {
+    "tank_level_percent": 70.0,
+    "pump_on": false,
+    "valve_opening_percent": 80.0,
+    "flow_rate_lpm": 40.0
+  }
+}
