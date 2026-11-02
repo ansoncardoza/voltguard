@@ -82,6 +82,26 @@ int main()
     frames.push_back(createModbusFrame(
         4, 1, 0x03, {0x00, 0x00, 0x00, 0x02}, true));
 
+    // 5. Invalid FC03 quantity (zero).
+    frames.push_back(createModbusFrame(
+        5, 1, 0x03, {0x00, 0x00, 0x00, 0x00}));
+
+    // 6. Invalid FC03 quantity (126).
+    frames.push_back(createModbusFrame(
+        6, 1, 0x03, {0x00, 0x00, 0x00, 0x7E}));
+
+    // 7. FC03 incomplete data (only 3 bytes).
+    frames.push_back(createModbusFrame(
+        7, 1, 0x03, {0x00, 0x00, 0x00}));
+
+    // 8. Invalid Unit ID (0 under our test profile).
+    frames.push_back(createModbusFrame(
+        8, 0, 0x03, {0x00, 0x00, 0x00, 0x0A}));
+
+    // 9. Register range exceeds address space.
+    frames.push_back(createModbusFrame(
+        9, 1, 0x03, {0xFF, 0xFF, 0x00, 0x02}));
+
     std::ofstream output(
         "data/generated/modbus_traffic.hex");
 

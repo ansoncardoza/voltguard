@@ -12,11 +12,11 @@ using Frame = std::vector<Byte>;
 
 struct ModbusPacket
 {
-    std::uint16_t transactionId;
-    std::uint16_t protocolId;
-    std::uint16_t length;
-    Byte unitId;
-    Byte functionCode;
+    std::uint16_t transactionId{};
+    std::uint16_t protocolId{};
+    std::uint16_t length{};
+    Byte unitId{};
+    Byte functionCode{};
     std::vector<Byte> data;
 };
 
@@ -64,7 +64,6 @@ bool parseModbusFrame(
     ModbusPacket& packet,
     std::string& error)
 {
-    // MBAP header is 7 bytes; minimum ADU is 8 bytes.
     if (frame.size() < 8)
     {
         error = "Frame is too short.";
@@ -77,17 +76,21 @@ bool parseModbusFrame(
     packet.unitId = frame[6];
     packet.functionCode = frame[7];
 
-    // Modbus/TCP uses Protocol ID 0.
     if (packet.protocolId != 0)
     {
         error = "Invalid Protocol ID.";
         return false;
     }
 
-    // Length counts Unit ID + PDU.
     if (packet.length != frame.size() - 6)
     {
         error = "MBAP length does not match frame size.";
+        return false;
+    }
+
+    if (packet.length < 2 || packet.length > 254)
+    {
+        error = "MBAP length is outside the permitted range.";
         return false;
     }
 
@@ -96,20 +99,77 @@ bool parseModbusFrame(
     return true;
 }
 
-bool isSupportedFunction(Byte functionCode)
+bool validateFunction(
+    const ModbusPacket& packet,
+    std::string& result)
 {
-    return functionCode == 0x03 ||
-           functionCode == 0x06;
+    // Configured test profile: Unit IDs 1 through 247.
+    if (packet.unitId < 1 || packet.unitId > 247)
+    {
+        result = "INVALID UNIT ID";
+        return false;
+    }
+
+    // Function 0x03: Read Holding Registers.
+    if (packet.functionCode == 0x03)
+    {
+        if (packet.data.size() != 4)
+        {
+            result = "INVALID DATA LENGTH FOR FUNCTION 0x03";
+            return false;
+        }
+
+        std::uint16_t startAddress = read16(packet.data, 0);
+        std::uint16_t quantity = read16(packet.data, 2);
+
+        if (quantity < 1 || quantity > 125)
+        {
+            result = "INVALID REGISTER QUANTITY (allowed: 1-125)";
+            return false;
+        }
+
+        std::uint32_t endAddress =
+            static_cast<std::uint32_t>(startAddress) + quantity;
+
+        if (endAddress > 65536)
+        {
+            result = "REGISTER RANGE EXCEEDS ADDRESS SPACE";
+            return false;
+        }
+
+        result = "VALID READ HOLDING REGISTERS REQUEST";
+        return true;
+    }
+
+    // Function 0x06: Write Single Register.
+    if (packet.functionCode == 0x06)
+    {
+        if (packet.data.size() != 4)
+        {
+            result = "INVALID DATA LENGTH FOR FUNCTION 0x06";
+            return false;
+        }
+
+        std::uint16_t registerAddress = read16(packet.data, 0);
+        std::uint16_t registerValue = read16(packet.data, 2);
+
+        result = "VALID WRITE SINGLE REGISTER REQUEST";
+        return true;
+    }
+
+    result = "UNSUPPORTED FUNCTION CODE";
+    return false;
 }
 
 void printPacket(const ModbusPacket& packet)
 {
     std::cout << "Transaction ID : 0x"
               << std::hex << std::uppercase
+              << std::setw(4) << std::setfill('0')
               << packet.transactionId << "\n";
 
     std::cout << "Protocol ID    : 0x"
-              << packet.protocolId << "\n";
+              << std::setw(4) << packet.protocolId << "\n";
 
     std::cout << "Length         : "
               << std::dec << packet.length << " bytes\n";
@@ -119,10 +179,29 @@ void printPacket(const ModbusPacket& packet)
 
     std::cout << "Function Code  : 0x"
               << std::hex << std::uppercase
-              << static_cast<int>(packet.functionCode) << "\n";
+              << std::setw(2) << static_cast<int>(packet.functionCode)
+              << "\n";
 
     std::cout << "Data bytes     : "
               << std::dec << packet.data.size() << "\n";
+
+    if (packet.functionCode == 0x03 && packet.data.size() == 4)
+    {
+        std::cout << "Start Address  : "
+                  << read16(packet.data, 0) << "\n";
+
+        std::cout << "Quantity       : "
+                  << read16(packet.data, 2) << " registers\n";
+    }
+
+    if (packet.functionCode == 0x06 && packet.data.size() == 4)
+    {
+        std::cout << "Register       : "
+                  << read16(packet.data, 0) << "\n";
+
+        std::cout << "Write Value    : "
+                  << read16(packet.data, 2) << "\n";
+    }
 }
 
 int main()
@@ -140,7 +219,7 @@ int main()
 
     std::cout << "====================================\n";
     std::cout << "       VOLTGUARD SYSTEM             \n";
-    std::cout << "      MODBUS/TCP PARSER             \n";
+    std::cout << "   FUNCTION VALIDATION ENGINE       \n";
     std::cout << "====================================\n";
 
     std::string line;
@@ -176,18 +255,19 @@ int main()
 
         printPacket(packet);
 
-        if (!isSupportedFunction(packet.functionCode))
+        if (validateFunction(packet, error))
         {
-            std::cout << "RESULT: UNSUPPORTED FUNCTION CODE\n";
+            std::cout << "RESULT: " << error << "\n";
         }
         else
         {
-            std::cout << "RESULT: STRUCTURALLY VALID FRAME\n";
+            std::cout << "RESULT: VALIDATION FAILED\n";
+            std::cout << "Reason: " << error << "\n";
         }
     }
 
     std::cout << "\n====================================\n";
-    std::cout << "Parsing completed.\n";
+    std::cout << "Validation completed.\n";
     std::cout << "Total frames processed: "
               << frameNumber << "\n";
 
