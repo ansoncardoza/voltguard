@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 
@@ -97,6 +96,112 @@ def evaluate_snapshot(file_path):
     }
 
 
+
+def load_parser_report(file_path):
+    """Load and validate the C++ parser JSON report."""
+
+    path = Path(file_path)
+
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Parser report not found: {path}"
+        )
+
+    with path.open("r", encoding="utf-8") as file:
+        report = json.load(file)
+
+    if not isinstance(report, dict):
+        raise ValueError("Parser report must be a JSON object.")
+
+    if report.get("schema_version") != "1.0":
+        raise ValueError("Unsupported parser report schema version.")
+
+    events = report.get("events")
+
+    if not isinstance(events, list):
+        raise ValueError("Parser report events must be a list.")
+
+    if report.get("total_frames") != len(events):
+        raise ValueError("Frame count does not match event count.")
+
+    allowed_statuses = {
+        "VALID",
+        "VALIDATION_FAILED",
+        "INVALID_FRAME",
+        "MALFORMED_HEX_INPUT",
+    }
+
+    for event in events:
+        if not isinstance(event, dict):
+            raise ValueError("Each parser event must be an object.")
+
+        if event.get("status") not in allowed_statuses:
+            raise ValueError("Unknown parser event status.")
+
+        if not isinstance(event.get("parsed"), bool):
+            raise ValueError("Parser event parsed field must be boolean.")
+
+        if not isinstance(event.get("function_valid"), bool):
+            raise ValueError(
+                "Parser event function_valid field must be boolean."
+            )
+
+    return report
+
+def evaluate_combined_snapshot(parser_path, snapshot_path):
+    """Combine protocol validation and physics validation evidence."""
+
+    parser_report = load_parser_report(parser_path)
+    physics_result = evaluate_snapshot(snapshot_path)
+
+    events = parser_report["events"]
+
+    parser_summary = {
+        "total_frames": len(events),
+        "valid_requests": sum(
+            event["status"] == "VALID" for event in events
+        ),
+        "validation_failures": sum(
+            event["status"] == "VALIDATION_FAILED" for event in events
+        ),
+        "invalid_frames": sum(
+            event["status"] == "INVALID_FRAME" for event in events
+        ),
+        "malformed_inputs": sum(
+            event["status"] == "MALFORMED_HEX_INPUT" for event in events
+        ),
+    }
+
+    parser_clean = all(
+        event["status"] == "VALID" for event in events
+    )
+
+    physics_valid = (
+        physics_result["validation_result"]["valid"]
+    )
+
+    overall_status = (
+        "NO_CONFIGURED_ANOMALIES"
+        if parser_clean and physics_valid
+        else "ANOMALY_INDICATORS_FOUND"
+    )
+
+    return {
+        "analysis_source": "VoltGuard Combined Analysis",
+        "environment": "LOCAL_TEST",
+        "parser_analysis": {
+            "summary": parser_summary,
+            "all_requests_valid": parser_clean,
+        },
+        "physics_analysis": physics_result,
+        "overall_status": overall_status,
+        "interpretation": (
+            "An anomaly indicator is evidence requiring investigation; "
+            "it does not establish malicious intent."
+        ),
+    }
+
+
 if __name__ == "__main__":
     project_root = Path(__file__).resolve().parents[3]
     snapshot_path = (
@@ -107,3 +212,28 @@ if __name__ == "__main__":
 
     print("\n========== VOLTGUARD JSON BRIDGE ==========")
     print(json.dumps(evaluation, indent=4))
+
+
+def save_combined_report(parser_path, snapshot_path, output_path):
+    """Generate and save a consolidated VoltGuard JSON report."""
+
+    report = evaluate_combined_snapshot(
+        parser_path,
+        snapshot_path,
+    )
+
+    report["project"] = {
+        "name": "VoltGuard",
+        "description": (
+            "Physics-Aware ICS/SCADA Intrusion Detection System"
+        ),
+        "report_version": "1.0",
+    }
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    with output.open("w", encoding="utf-8") as file:
+        json.dump(report, file, indent=4)
+
+    return report

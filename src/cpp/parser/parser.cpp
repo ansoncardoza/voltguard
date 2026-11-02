@@ -1,4 +1,3 @@
-
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
@@ -103,14 +102,12 @@ bool validateFunction(
     const ModbusPacket& packet,
     std::string& result)
 {
-    // Configured test profile: Unit IDs 1 through 247.
     if (packet.unitId < 1 || packet.unitId > 247)
     {
         result = "INVALID UNIT ID";
         return false;
     }
 
-    // Function 0x03: Read Holding Registers.
     if (packet.functionCode == 0x03)
     {
         if (packet.data.size() != 4)
@@ -141,7 +138,6 @@ bool validateFunction(
         return true;
     }
 
-    // Function 0x06: Write Single Register.
     if (packet.functionCode == 0x06)
     {
         if (packet.data.size() != 4)
@@ -149,9 +145,6 @@ bool validateFunction(
             result = "INVALID DATA LENGTH FOR FUNCTION 0x06";
             return false;
         }
-
-        std::uint16_t registerAddress = read16(packet.data, 0);
-        std::uint16_t registerValue = read16(packet.data, 2);
 
         result = "VALID WRITE SINGLE REGISTER REQUEST";
         return true;
@@ -204,10 +197,46 @@ void printPacket(const ModbusPacket& packet)
     }
 }
 
+// Escape special characters before writing JSON strings.
+std::string jsonEscape(const std::string& value)
+{
+    std::ostringstream escaped;
+
+    for (unsigned char character : value)
+    {
+        switch (character)
+        {
+            case '"':  escaped << "\\\""; break;
+            case '\\': escaped << "\\\\"; break;
+            case '\n': escaped << "\\n"; break;
+            case '\r': escaped << "\\r"; break;
+            case '\t': escaped << "\\t"; break;
+
+            default:
+                if (character < 0x20)
+                {
+                    escaped << "\\u"
+                            << std::hex << std::setw(4)
+                            << std::setfill('0')
+                            << static_cast<int>(character);
+                }
+                else
+                {
+                    escaped << character;
+                }
+        }
+    }
+
+    return escaped.str();
+}
+
 int main()
 {
     const std::string inputFile =
         "data/generated/modbus_traffic.hex";
+
+    const std::string outputFile =
+        "data/generated/parser_results.json";
 
     std::ifstream input(inputFile);
 
@@ -217,13 +246,28 @@ int main()
         return 1;
     }
 
+    std::ofstream jsonOutput(outputFile);
+
+    if (!jsonOutput)
+    {
+        std::cerr << "Error: Cannot create " << outputFile << "\n";
+        return 1;
+    }
+
     std::cout << "====================================\n";
     std::cout << "       VOLTGUARD SYSTEM             \n";
     std::cout << "   FUNCTION VALIDATION ENGINE       \n";
     std::cout << "====================================\n";
 
+    jsonOutput << "{\n"
+               << "  \"schema_version\": \"1.0\",\n"
+               << "  \"source\": \"VoltGuard C++ Modbus Parser\",\n"
+               << "  \"environment\": \"LOCAL_TEST\",\n"
+               << "  \"events\": [\n";
+
     std::string line;
     int frameNumber = 0;
+    bool firstEvent = true;
 
     while (std::getline(input, line))
     {
@@ -236,40 +280,110 @@ int main()
         Frame frame;
         ModbusPacket packet{};
         std::string error;
+        std::string status;
+        bool parsed = false;
+        bool functionValid = false;
 
         std::cout << "\n------------------------------------\n";
         std::cout << "Frame #" << frameNumber << "\n";
 
         if (!parseHexLine(line, frame))
         {
-            std::cout << "RESULT: MALFORMED HEX INPUT\n";
-            continue;
+            status = "MALFORMED_HEX_INPUT";
+            error = "Unable to parse hexadecimal input.";
+            std::cout << "RESULT: " << status << "\n";
         }
-
-        if (!parseModbusFrame(frame, packet, error))
+        else if (!parseModbusFrame(frame, packet, error))
         {
-            std::cout << "RESULT: INVALID FRAME\n";
+            status = "INVALID_FRAME";
+            std::cout << "RESULT: " << status << "\n";
             std::cout << "Reason: " << error << "\n";
-            continue;
-        }
-
-        printPacket(packet);
-
-        if (validateFunction(packet, error))
-        {
-            std::cout << "RESULT: " << error << "\n";
         }
         else
         {
-            std::cout << "RESULT: VALIDATION FAILED\n";
-            std::cout << "Reason: " << error << "\n";
+            parsed = true;
+            printPacket(packet);
+
+            functionValid = validateFunction(packet, error);
+
+            if (functionValid)
+            {
+                status = "VALID";
+                std::cout << "RESULT: " << error << "\n";
+            }
+            else
+            {
+                status = "VALIDATION_FAILED";
+                std::cout << "RESULT: " << status << "\n";
+                std::cout << "Reason: " << error << "\n";
+            }
         }
+
+        if (!firstEvent)
+            jsonOutput << ",\n";
+
+        firstEvent = false;
+
+        jsonOutput << "    {\n"
+                   << "      \"frame_number\": " << frameNumber << ",\n"
+                   << "      \"status\": \"" << status << "\",\n"
+                   << "      \"parsed\": "
+                   << (parsed ? "true" : "false") << ",\n"
+                   << "      \"function_valid\": "
+                   << (functionValid ? "true" : "false") << ",\n"
+                   << "      \"reason\": \""
+                   << jsonEscape(error) << "\"";
+
+        if (parsed)
+        {
+            jsonOutput << ",\n"
+                       << "      \"transaction_id\": "
+                       << packet.transactionId << ",\n"
+                       << "      \"protocol_id\": "
+                       << packet.protocolId << ",\n"
+                       << "      \"length\": "
+                       << packet.length << ",\n"
+                       << "      \"unit_id\": "
+                       << static_cast<int>(packet.unitId) << ",\n"
+                       << "      \"function_code\": "
+                       << static_cast<int>(packet.functionCode);
+
+            if (packet.functionCode == 0x03 &&
+                packet.data.size() == 4)
+            {
+                jsonOutput << ",\n"
+                           << "      \"start_address\": "
+                           << read16(packet.data, 0) << ",\n"
+                           << "      \"quantity\": "
+                           << read16(packet.data, 2);
+            }
+
+            if (packet.functionCode == 0x06 &&
+                packet.data.size() == 4)
+            {
+                jsonOutput << ",\n"
+                           << "      \"register_address\": "
+                           << read16(packet.data, 0) << ",\n"
+                           << "      \"register_value\": "
+                           << read16(packet.data, 2);
+            }
+        }
+
+        jsonOutput << "\n    }";
     }
+
+    jsonOutput << "\n  ],\n"
+               << "  \"total_frames\": " << frameNumber << "\n"
+               << "}\n";
+
+    jsonOutput.close();
 
     std::cout << "\n====================================\n";
     std::cout << "Validation completed.\n";
     std::cout << "Total frames processed: "
               << frameNumber << "\n";
+    std::cout << "JSON report saved to: "
+              << outputFile << "\n";
 
     return 0;
 }

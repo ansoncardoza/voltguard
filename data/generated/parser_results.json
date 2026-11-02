@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.0",
+  "source": "VoltGuard C++ Modbus Parser",
+  "environment": "LOCAL_TEST",
+  "events": [
+    {
+      "frame_number": 1,
+      "status": "VALID",
+      "parsed": true,
+      "function_valid": true,
+      "reason": "VALID READ HOLDING REGISTERS REQUEST",
+      "transaction_id": 1,
+      "protocol_id": 0,
+      "length": 6,
+      "unit_id": 1,
+      "function_code": 3,
+      "start_address": 0,
+      "quantity": 10
+    },
+    {
+      "frame_number": 2,
+      "status": "VALID",
+      "parsed": true,
+      "function_valid": true,
+      "reason": "VALID WRITE SINGLE REGISTER REQUEST",
+      "transaction_id": 2,
+      "protocol_id": 0,
+      "length": 6,
+      "unit_id": 1,
+      "function_code": 6,
+      "register_address": 100,
+      "register_value": 1
+    },
+    {
+      "frame_number": 3,
+      "status": "VALIDATION_FAILED",
+      "parsed": true,
+      "function_valid": false,
+      "reason": "UNSUPPORTED FUNCTION CODE",
+      "transaction_id": 3,
+      "protocol_id": 0,
+      "length": 4,
+      "unit_id": 1,
+      "function_code": 69
+    },
+    {
+      "frame_number": 4,
+      "status": "INVALID_FRAME",
+      "parsed": false,
+      "function_valid": false,
+      "reason": "MBAP length does not match frame size."
+    },
+    {
+      "frame_number": 5,
+      "status": "VALIDATION_FAILED",
+      "parsed": true,
+      "function_valid": false,
+      "reason": "INVALID REGISTER QUANTITY (allowed: 1-125)",
+      "transaction_id": 5,
+      "protocol_id": 0,
+      "length": 6,
+      "unit_id": 1,
+      "function_code": 3,
+      "start_address": 0,
+      "quantity": 0
+    },
+    {
+      "frame_number": 6,
+      "status": "VALIDATION_FAILED",
+      "parsed": true,
+      "function_valid": false,
+      "reason": "INVALID REGISTER QUANTITY (allowed: 1-125)",
+      "transaction_id": 6,
+      "protocol_id": 0,
+      "length": 6,
+      "unit_id": 1,
+      "function_code": 3,
+      "start_address": 0,
+      "quantity": 126
+    },
+    {
+      "frame_number": 7,
+      "status": "VALIDATION_FAILED",
+      "parsed": true,
+      "function_valid": false,
+      "reason": "INVALID DATA LENGTH FOR FUNCTION 0x03",
+      "transaction_id": 7,
+      "protocol_id": 0,
+      "length": 5,
+      "unit_id": 1,
+      "function_code": 3
+    },
+    {
+      "frame_number": 8,
+      "status": "VALIDATION_FAILED",
+      "parsed": true,
+      "function_valid": false,
+      "reason": "INVALID UNIT ID",
+      "transaction_id": 8,
+      "protocol_id": 0,
+      "length": 6,
+      "unit_id": 0,
+      "function_code": 3,
+      "start_address": 0,
+      "quantity": 10
+    },
+    {
+      "frame_number": 9,
+      "status": "VALIDATION_FAILED",
+      "parsed": true,
+      "function_valid": false,
+      "reason": "REGISTER RANGE EXCEEDS ADDRESS SPACE",
+      "transaction_id": 9,
+      "protocol_id": 0,
+      "length": 6,
+      "unit_id": 1,
+      "function_code": 3,
+      "start_address": 65535,
+      "quantity": 2
+    }
+  ],
+  "total_frames": 9
+}
