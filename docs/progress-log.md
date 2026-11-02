@@ -30,8 +30,61 @@ Prepared project requirements and system architecture documentation.
 
 
 
-
-
 Updated the README.md file
 
-Created Branch **"Develop"** 
+Created Branch **"Develop"**
+
+
+
+**### Milestone: Modbus/TCP Parsing and Function Validation**
+
+
+
+**\*\*Status:\*\* Completed**
+
+
+
+**Implemented and tested a C++17-based Modbus/TCP parser with synthetic traffic generation.**
+
+
+
+**\*\*Completed activities:\*\***
+
+**- Generated nine synthetic Modbus/TCP request frames.**
+
+**- Implemented MBAP header and protocol identifier validation.**
+
+**- Added Unit ID validation under the configured test profile.**
+
+**- Implemented FC03 Read Holding Registers validation.**
+
+**- Implemented FC06 Write Single Register validation.**
+
+**- Added register quantity, data length, and address-range checks.**
+
+**- Detected unsupported function codes and malformed frames.**
+
+
+
+**\*\*Test results:\*\***
+
+**- Total frames processed: 9**
+
+**- Valid requests: 2**
+
+**- Rejected requests: 7**
+
+**- Unexpected results: 0**
+
+
+
+**\*\*Outcome:\*\* The parser successfully distinguishes supported requests from malformed or unsupported test inputs.**
+
+
+
+**\*\*Limitation:\*\* These results demonstrate protocol-level validation only. They do not establish whether a request is malicious or whether its effect is physically unsafe. Physics-aware validation is a subsequent development stage.**
+
+
+
+
+
