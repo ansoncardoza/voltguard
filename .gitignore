@@ -28,3 +28,12 @@ build/
 # Python cache
 __pycache__/
 *.pyc
+
+# Release build output
+build-release/
+
+# Distribution packages and release archives
+dist/
+
+# Additional Python-generated files
+*.egg-info/
