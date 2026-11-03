@@ -1,0 +1,33 @@
+{
+    "analysis_source": "VoltGuard Combined Analysis",
+    "environment": "LOCAL_TEST",
+    "parser_analysis": {
+        "summary": {
+            "total_frames": 9,
+            "valid_requests": 2,
+            "validation_failures": 6,
+            "invalid_frames": 1,
+            "malformed_inputs": 0
+        },
+        "all_requests_valid": false
+    },
+    "physics_analysis": {
+        "transaction_id": 1002,
+        "source": "VoltGuard Abnormal Test Simulator",
+        "environment": "LOCAL_TEST",
+        "validation_result": {
+            "valid": false,
+            "violations": [
+                "PUMP OFF BUT FLOW EXCEEDS EXPECTED RANGE"
+            ],
+            "warnings": []
+        }
+    },
+    "overall_status": "ANOMALY_INDICATORS_FOUND",
+    "interpretation": "An anomaly indicator is evidence requiring investigation; it does not establish malicious intent.",
+    "project": {
+        "name": "VoltGuard",
+        "description": "Physics-Aware ICS/SCADA Intrusion Detection System",
+        "report_version": "1.0"
+    }
+}
