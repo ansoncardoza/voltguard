@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include <QJsonArray>
 #include <QList>
 #include <QStackedWidget>
 #include <QPushButton>
@@ -15,7 +16,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
-#include <QDebug>
+#include <QComboBox>
+#include <QStringList>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -188,7 +190,7 @@ void MainWindow::createPages()
     // -----------------------------------------
 
     QString reportPath = QDir(
-        QCoreApplication::applicationDirPath()
+    QCoreApplication::applicationDirPath()
     ).absoluteFilePath("../reports/combined_analysis_report.json");
 
     reportPath = QDir::cleanPath(reportPath);
@@ -199,18 +201,18 @@ void MainWindow::createPages()
     QString physicsStatus = "N/A";
     QString overallStatus = "REPORT NOT LOADED";
 
-    QFile reportFile(reportPath);
+    QFile ReportFile(reportPath);
 
-    if (reportFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    if (ReportFile.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         QJsonParseError parseError;
 
         QJsonDocument document = QJsonDocument::fromJson(
-            reportFile.readAll(),
+            ReportFile.readAll(),
             &parseError
         );
 
-        reportFile.close();
+        ReportFile.close();
 
         if (parseError.error == QJsonParseError::NoError
             && document.isObject())
@@ -475,7 +477,6 @@ void MainWindow::createPages()
 
     stackedWidget->addWidget(protocolPage);
 
-
     // =========================================
     // PAGE 4: PHYSICS MONITORING
     // =========================================
@@ -492,33 +493,490 @@ void MainWindow::createPages()
         "background-color: transparent;"
     );
 
-    QLabel *physicsInfo = new QLabel(
-        "Synthetic Water Tank Process Model\n\n"
-        "Monitored Variables:\n"
-        "• Tank level percentage\n"
-        "• Pump operating state\n"
-        "• Valve opening percentage\n"
-        "• Flow rate in litres per minute\n\n"
-        "Physics validation checks whether the synthetic "
-        "process conditions satisfy the configured "
-        "operating rules.\n\n"
-        "Data Source: combined_analysis_report.json"
+    QLabel *physicsSubtitle = new QLabel(
+        "Synthetic Water Tank Process Monitoring"
     );
 
-    physicsInfo->setWordWrap(true);
-
-    physicsInfo->setStyleSheet(
-        "color: #334155;"
-        "font-size: 15px;"
+    physicsSubtitle->setStyleSheet(
+        "color: #64748b;"
+        "font-size: 14px;"
         "background-color: transparent;"
     );
 
+    // Scenario Selector
+
+    QLabel *scenarioLabel = new QLabel("Select Test Scenario:");
+
+    QComboBox *scenarioSelector = new QComboBox();
+
+    scenarioSelector->addItem("Normal Scenario", "process_snapshot.json");
+    scenarioSelector->addItem("Abnormal Scenario", "abnormal_process_snapshot.json");
+
+    scenarioSelector->setStyleSheet(
+    "QComboBox {"
+    "    background-color: white;"
+    "    color: #1e293b;"
+    "    border: 1px solid #cbd5e1;"
+    "    border-radius: 6px;"
+    "    padding: 8px;"
+    "    min-width: 180px;"
+    "}"
+    "QComboBox::drop-down {"
+    "    border: none;"
+    "    width: 25px;"
+    "}"
+    "QComboBox QAbstractItemView {"
+    "    background-color: white;"
+    "    color: #1e293b;"
+    "    selection-background-color: #2563eb;"
+    "    selection-color: white;"
+    "    border: 1px solid #cbd5e1;"
+    "}"
+    );
+
+    QHBoxLayout *scenarioLayout = new QHBoxLayout();
+    scenarioLayout->addWidget(scenarioLabel);
+    scenarioLayout->addWidget(scenarioSelector);
+    scenarioLayout->addStretch();
+
+    // Process Variable Cards
+
+    QGridLayout *physicsGrid = new QGridLayout();
+
+    auto createPhysicsCard = [](
+        const QString &title,
+        const QString &color
+    )
+    {
+        QFrame *card = new QFrame();
+
+        card->setMinimumHeight(110);
+
+        card->setStyleSheet(
+            "QFrame {"
+            "background-color: white;"
+            "border: 1px solid #e2e8f0;"
+            "border-radius: 10px;"
+            "}"
+        );
+
+        QVBoxLayout *layout = new QVBoxLayout(card);
+
+        QLabel *titleLabel = new QLabel(title);
+        QLabel *valueLabel = new QLabel("N/A");
+
+        titleLabel->setStyleSheet(
+            "color: #64748b;"
+            "font-size: 13px;"
+            "border: none;"
+            "background-color: transparent;"
+        );
+
+        valueLabel->setStyleSheet(
+            "color: " + color +
+            "; font-size: 25px;"
+            "font-weight: bold;"
+            "border: none;"
+            "background-color: transparent;"
+        );
+
+        layout->addWidget(titleLabel);
+        layout->addWidget(valueLabel);
+        layout->addStretch();
+
+        card->setProperty("valueLabel", QVariant::fromValue<QObject *>(valueLabel));
+
+        return card;
+    };
+
+    QFrame *tankCard = createPhysicsCard("Tank Level", "#2563eb");
+    QFrame *pumpCard = createPhysicsCard("Pump Status", "#16a34a");
+    QFrame *valveCard = createPhysicsCard("Valve Opening", "#7c3aed");
+    QFrame *flowCard = createPhysicsCard("Flow Rate", "#0891b2");
+
+    QLabel *tankValue = qobject_cast<QLabel *>(
+        tankCard->property("valueLabel").value<QObject *>()
+    );
+
+    QLabel *pumpValue = qobject_cast<QLabel *>(
+        pumpCard->property("valueLabel").value<QObject *>()
+    );
+
+    QLabel *valveValue = qobject_cast<QLabel *>(
+        valveCard->property("valueLabel").value<QObject *>()
+    );
+
+    QLabel *flowValue = qobject_cast<QLabel *>(
+        flowCard->property("valueLabel").value<QObject *>()
+    );
+
+    physicsGrid->addWidget(tankCard, 0, 0);
+    physicsGrid->addWidget(pumpCard, 0, 1);
+    physicsGrid->addWidget(valveCard, 1, 0);
+    physicsGrid->addWidget(flowCard, 1, 1);
+
+    // Snapshot Information
+
+    QLabel *snapshotInfo = new QLabel();
+    QLabel *physicsStatusLabel = new QLabel();
+
+    physicsStatusLabel->setWordWrap(true);
+
+    physicsStatusLabel->setStyleSheet(
+        "background-color: white;"
+        "padding: 14px;"
+        "border: 1px solid #e2e8f0;"
+        "border-radius: 8px;"
+        "color: #334155;"
+        "font-weight: bold;"
+    );
+
+    // Physics Validation Results
+
+    QLabel *validationTitle = new QLabel(
+        "Physics Validation Results"
+    );
+
+    validationTitle->setStyleSheet(
+        "font-size: 20px;"
+        "font-weight: bold;"
+        "color: #0f172a;"
+        "background-color: transparent;"
+    );
+
+    QLabel *validationSummary = new QLabel();
+    QLabel *violationLabel = new QLabel();
+    QLabel *warningLabel = new QLabel();
+
+    validationSummary->setWordWrap(true);
+    violationLabel->setWordWrap(true);
+    warningLabel->setWordWrap(true);
+
+    validationSummary->setStyleSheet(
+        "background-color: white;"
+        "padding: 12px;"
+        "border: 1px solid #e2e8f0;"
+        "border-radius: 8px;"
+        "color: #334155;"
+        "font-weight: bold;"
+    );
+
+    violationLabel->setStyleSheet(
+        "background-color: white;"
+        "padding: 12px;"
+        "border: 1px solid #e2e8f0;"
+        "border-radius: 8px;"
+        "color: #dc2626;"
+    );
+
+    warningLabel->setStyleSheet(
+        "background-color: white;"
+        "padding: 12px;"
+        "border: 1px solid #e2e8f0;"
+        "border-radius: 8px;"
+        "color: #b45309;"
+    );
+
+    // Dynamic Scenario Loading
+
+    auto updatePhysicsScenario = [
+        tankValue,
+        pumpValue,
+        valveValue,
+        flowValue,
+        snapshotInfo,
+        physicsStatusLabel,
+        validationSummary,
+        violationLabel,
+        warningLabel,
+        scenarioSelector
+    ]()
+    {
+        QString selectedFile =
+            scenarioSelector->currentData().toString();
+
+        QString snapshotPath = QDir(
+            QCoreApplication::applicationDirPath()
+        ).absoluteFilePath("../data/generated/" + selectedFile);
+
+        snapshotPath = QDir::cleanPath(snapshotPath);
+
+        // Select the matching combined analysis report
+
+       QString reportFileName;
+
+       if (selectedFile == "process_snapshot.json")
+{
+    reportFileName = "normal_combined_analysis_report.json";
+}
+else if (selectedFile == "abnormal_process_snapshot.json")
+{
+    reportFileName = "abnormal_combined_analysis_report.json";
+}
+else
+{
+    reportFileName = "combined_analysis_report.json";
+}
+
+QString reportPath = QDir(
+    QCoreApplication::applicationDirPath()
+).absoluteFilePath("../reports/" + reportFileName);
+
+reportPath = QDir::cleanPath(reportPath);
+
+        tankValue->setText("N/A");
+        pumpValue->setText("N/A");
+        valveValue->setText("N/A");
+        flowValue->setText("N/A");
+
+        snapshotInfo->setText("Data Source: " + selectedFile +
+                              "\nEnvironment: LOCAL_TEST");
+
+        physicsStatusLabel->setText("Data Status: LOADING");
+
+        validationSummary->setText(
+            "Validation Status: NOT AVAILABLE\nDetected Violations: N/A"
+        );
+
+        violationLabel->setText("Rule Violations: Not available.");
+        warningLabel->setText("Warnings: Not available.");
+
+        // Load selected process snapshot
+
+        QFile snapshotFile(snapshotPath);
+
+        bool snapshotLoaded = false;
+        QString snapshotTransaction;
+
+        if (snapshotFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        {
+            QJsonParseError snapshotError;
+
+            QJsonDocument snapshotDocument = QJsonDocument::fromJson(
+                snapshotFile.readAll(),
+                &snapshotError
+            );
+
+            snapshotFile.close();
+
+            if (snapshotError.error == QJsonParseError::NoError
+                && snapshotDocument.isObject())
+            {
+                QJsonObject root = snapshotDocument.object();
+
+                QJsonObject process =
+                    root.value("process_state").toObject();
+
+                if (process.value("tank_level_percent").isDouble()
+                    && process.value("pump_on").isBool()
+                    && process.value("valve_opening_percent").isDouble()
+                    && process.value("flow_rate_lpm").isDouble())
+                {
+                    double level =
+                        process.value("tank_level_percent").toDouble();
+
+                    bool pump =
+                        process.value("pump_on").toBool();
+
+                    double valve =
+                        process.value("valve_opening_percent").toDouble();
+
+                    double flow =
+                        process.value("flow_rate_lpm").toDouble();
+
+                    tankValue->setText(
+                        QString::number(level, 'f', 1) + "%"
+                    );
+
+                    pumpValue->setText(pump ? "ON" : "OFF");
+
+                    pumpValue->setStyleSheet(
+                        "color: " + QString(pump ? "#16a34a" : "#dc2626") +
+                        "; font-size: 25px; font-weight: bold;"
+                        "background-color: transparent;"
+                    );
+
+                    valveValue->setText(
+                        QString::number(valve, 'f', 1) + "%"
+                    );
+
+                    flowValue->setText(
+                        QString::number(flow, 'f', 1) + " L/min"
+                    );
+
+                    snapshotTransaction =
+                        QString::number(root.value("transaction_id").toInt());
+
+                    snapshotLoaded = true;
+                }
+            }
+        }
+
+        if (snapshotLoaded)
+        {
+            physicsStatusLabel->setText("Data Status: SNAPSHOT LOADED");
+            snapshotInfo->setText(
+                "Data Source: " + selectedFile +
+                "\nEnvironment: LOCAL_TEST" +
+                "\nTransaction ID: " + snapshotTransaction
+            );
+        }
+        else
+        {
+            physicsStatusLabel->setText(
+                "Data Status: SNAPSHOT COULD NOT BE LOADED"
+            );
+        }
+
+        // Load matching combined validation report
+
+        QFile reportFile(reportPath);
+
+        if (reportFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        {
+            QJsonParseError reportError;
+
+            QJsonDocument reportDocument = QJsonDocument::fromJson(
+                reportFile.readAll(),
+                &reportError
+            );
+
+            reportFile.close();
+
+            if (reportError.error == QJsonParseError::NoError
+                && reportDocument.isObject())
+            {
+                QJsonObject reportRoot = reportDocument.object();
+
+                QJsonObject physicsAnalysis =
+                    reportRoot.value("physics_analysis").toObject();
+
+                QJsonObject validationResult =
+                    physicsAnalysis.value("validation_result").toObject();
+
+                int reportTransaction =
+                    physicsAnalysis.value("transaction_id").toInt(-1);
+
+                bool transactionOk = false;
+                int selectedTransaction =
+                snapshotTransaction.toInt(&transactionOk);
+
+                if (!transactionOk)
+                {
+                  selectedTransaction = -2;
+                }
+
+                // Ensure the report belongs to the selected snapshot
+
+                if (snapshotLoaded
+                    && reportTransaction == selectedTransaction
+                    && validationResult.value("valid").isBool())
+                {
+                    bool valid =
+                        validationResult.value("valid").toBool();
+
+                    QJsonArray violations =
+                        validationResult.value("violations").toArray();
+
+                    QJsonArray warnings =
+                        validationResult.value("warnings").toArray();
+
+                    validationSummary->setText(
+                        "Validation Status: " +
+                        QString(valid ? "VALID" : "ANOMALIES DETECTED") +
+                        "\nDetected Violations: " +
+                        QString::number(violations.size())
+                    );
+
+                    QStringList violationDescriptions;
+
+                    for (const QJsonValue &item : violations)
+                    {
+                        violationDescriptions.append(item.toString());
+                    }
+
+                    violationLabel->setText(
+                        "Rule Violations:\n" +
+                        (violationDescriptions.isEmpty()
+                            ? QString("No physics rule violations detected.")
+                            : violationDescriptions.join("\n"))
+                    );
+
+                    QStringList warningDescriptions;
+
+                    for (const QJsonValue &item : warnings)
+                    {
+                        warningDescriptions.append(item.toString());
+                    }
+
+                    warningLabel->setText(
+                        "Warnings:\n" +
+                        (warningDescriptions.isEmpty()
+                            ? QString("No physics warnings.")
+                            : warningDescriptions.join("\n"))
+                    );
+                }
+                else
+                {
+                    validationSummary->setText(
+                        "Validation Status: REPORT DOES NOT MATCH SELECTED SCENARIO"
+                        "\nDetected Violations: N/A"
+                    );
+
+                    violationLabel->setText(
+                        "Rule Violations: Generate a combined report for this scenario."
+                    );
+
+                    warningLabel->setText(
+                        "Warnings: Validation results are not available for this scenario."
+                    );
+                }
+            }
+            else
+            {
+                validationSummary->setText(
+                    "Validation Status: INVALID REPORT JSON"
+                );
+            }
+        }
+        else
+        {
+            validationSummary->setText(
+                "Validation Status: REPORT NOT FOUND"
+            );
+        }
+    };
+
+    QObject::connect(
+        scenarioSelector,
+        &QComboBox::currentIndexChanged,
+        physicsPage,
+        [updatePhysicsScenario](int)
+        {
+            updatePhysicsScenario();
+        }
+    );
+
+    // Initial scenario
+
+    updatePhysicsScenario();
+
+    // Page Layout
+
     physicsLayout->addWidget(physicsTitle);
-    physicsLayout->addWidget(physicsInfo);
-    physicsLayout->addStretch();
+    physicsLayout->addWidget(physicsSubtitle);
+    physicsLayout->addSpacing(10);
+    physicsLayout->addLayout(scenarioLayout);
+    physicsLayout->addSpacing(10);
+    physicsLayout->addLayout(physicsGrid);
+    physicsLayout->addWidget(snapshotInfo);
+    physicsLayout->addWidget(physicsStatusLabel);
+    physicsLayout->addWidget(validationTitle);
+    physicsLayout->addWidget(validationSummary);
+    physicsLayout->addWidget(violationLabel);
+    physicsLayout->addWidget(warningLabel);
 
     stackedWidget->addWidget(physicsPage);
-
 
     // =========================================
     // PAGE 5: SECURITY ALERTS
@@ -600,36 +1058,22 @@ void MainWindow::createPages()
 
     stackedWidget->addWidget(reportsPage);
 
-  
-    // -----------------------------------------
-    // Diagnostic Output
-    // -----------------------------------------
-
-    qDebug() << "Total dashboard pages:" << stackedWidget->count();
-    qDebug() << "Initial current page:" << stackedWidget->currentIndex();
 }
+// =========================================
+// DASHBOARD PAGE NAVIGATION
+// =========================================
 
-// Switch between dashboard pages
 void MainWindow::switchPage(int pageIndex)
 {
-    qDebug() << "Navigation clicked. Requested page:" << pageIndex;
-
     if (stackedWidget == nullptr)
     {
-        qDebug() << "ERROR: Stacked widget is null.";
         return;
     }
 
-    qDebug() << "Total registered pages:" << stackedWidget->count();
-
-    if (pageIndex >= 0 && pageIndex < stackedWidget->count())
+    if (pageIndex < 0 || pageIndex >= stackedWidget->count())
     {
-        stackedWidget->setCurrentIndex(pageIndex);
+        return;
+    }
 
-        qDebug() << "Current page:" << stackedWidget->currentIndex();
-    }
-    else
-    {
-        qDebug() << "ERROR: Invalid page index.";
-    }
+    stackedWidget->setCurrentIndex(pageIndex);
 }
