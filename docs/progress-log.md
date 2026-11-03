@@ -118,9 +118,13 @@ Created Branch **"Develop"**
 
 **8. Consolidated analysis report**
 
-&#x20;  **In progress**
+&#x20;  **Completed**
 
 **9. Native Qt dashboard**
 
-&#x20;  **Pending**
+&#x20;  **Completed**
+
+**10. Dashboard integration PR**
+
+&#x20;  **Synchronized**
 
