@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from src.python.integration.decision_engine import evaluate_decision
+
 from src.python.physics.operating_rules import (
     validate_operating_conditions,
 )
@@ -218,6 +220,48 @@ def save_combined_report(parser_path, snapshot_path, output_path):
     """Generate and save a consolidated VoltGuard JSON report."""
 
     report = evaluate_combined_snapshot(
+        parser_path,
+        snapshot_path,
+    )
+
+    report["project"] = {
+        "name": "VoltGuard",
+        "description": (
+            "Physics-Aware ICS/SCADA Intrusion Detection System"
+        ),
+        "report_version": "1.0",
+    }
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    with output.open("w", encoding="utf-8") as file:
+        json.dump(report, file, indent=4)
+
+    return report
+
+
+def evaluate_combined_decision(parser_path, snapshot_path):
+    """Generate combined analysis and an offline simulated decision."""
+
+    report = evaluate_combined_snapshot(
+        parser_path,
+        snapshot_path,
+    )
+
+    report["decision_analysis"] = evaluate_decision(report)
+
+    return report
+
+
+def save_combined_decision_report(
+    parser_path,
+    snapshot_path,
+    output_path,
+):
+    """Generate and save a combined report with decision analysis."""
+
+    report = evaluate_combined_decision(
         parser_path,
         snapshot_path,
     )

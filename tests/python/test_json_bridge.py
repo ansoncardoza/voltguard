@@ -3,6 +3,7 @@ import json
 from src.python.integration.json_bridge import (
     load_parser_report,
     evaluate_combined_snapshot,
+    evaluate_combined_decision,
 )
 
 import pytest
@@ -101,3 +102,23 @@ def test_parser_report_rejects_incorrect_frame_count(tmp_path):
     with pytest.raises(ValueError, match="Frame count"):
         load_parser_report(report_path)
 
+
+def test_combined_decision_for_normal_snapshot():
+    result = evaluate_combined_decision(
+        "data/generated/parser_results.json",
+        "data/generated/process_snapshot.json",
+    )
+
+    assert result["decision_analysis"]["decision"] == "DROP"
+    assert result["decision_analysis"]["evidence"]["physics_valid"] is True
+
+
+def test_combined_decision_for_abnormal_snapshot():
+    result = evaluate_combined_decision(
+        "data/generated/parser_results.json",
+        "data/generated/abnormal_process_snapshot.json",
+    )
+
+    assert result["decision_analysis"]["decision"] == "DROP"
+    assert result["decision_analysis"]["evidence"]["physics_valid"] is False
+    assert result["decision_analysis"]["evidence"]["physics_violations"] == 1
