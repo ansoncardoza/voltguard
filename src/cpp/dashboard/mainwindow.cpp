@@ -1,5 +1,8 @@
 #include "mainwindow.h"
 
+#include <QProgressBar>
+#include <QComboBox>
+#include <QStringList>
 #include <QJsonArray>
 #include <QList>
 #include <QStackedWidget>
@@ -614,6 +617,90 @@ void MainWindow::createPages()
     physicsGrid->addWidget(pumpCard, 0, 1);
     physicsGrid->addWidget(valveCard, 1, 0);
     physicsGrid->addWidget(flowCard, 1, 1);
+    
+    // Tank Level Visualization
+
+    QFrame *tankVisualizationCard = new QFrame();
+
+    tankVisualizationCard->setMinimumHeight(220);
+
+    tankVisualizationCard->setStyleSheet(
+        "QFrame {"
+        "background-color: white;"
+        "border: 1px solid #e2e8f0;"
+        "border-radius: 10px;"
+        "}"
+    );
+
+    QVBoxLayout *tankVisualizationLayout =
+        new QVBoxLayout(tankVisualizationCard);
+
+    QLabel *tankVisualizationTitle =
+        new QLabel("Live Tank Level Visualization");
+
+    tankVisualizationTitle->setStyleSheet(
+        "font-size: 17px;"
+        "font-weight: bold;"
+        "color: #1e293b;"
+        "border: none;"
+        "background-color: transparent;"
+    );
+
+    QLabel *tankVisualizationValue =
+        new QLabel("Tank Level: N/A");
+
+    tankVisualizationValue->setAlignment(Qt::AlignCenter);
+
+    tankVisualizationValue->setStyleSheet(
+        "font-size: 16px;"
+        "font-weight: bold;"
+        "color: #2563eb;"
+        "border: none;"
+        "background-color: transparent;"
+    );
+
+    QProgressBar *tankLevelBar = new QProgressBar();
+
+    tankLevelBar->setOrientation(Qt::Vertical);
+    tankLevelBar->setRange(0, 100);
+    tankLevelBar->setValue(0);
+    tankLevelBar->setTextVisible(true);
+    tankLevelBar->setFormat("%p%");
+    tankLevelBar->setMinimumHeight(130);
+    tankLevelBar->setMaximumWidth(100);
+    tankLevelBar->setAlignment(Qt::AlignCenter);
+
+    tankLevelBar->setStyleSheet(
+        "QProgressBar {"
+        "background-color: #e2e8f0;"
+        "border: 2px solid #94a3b8;"
+        "border-radius: 8px;"
+        "color: #0f172a;"
+        "font-weight: bold;"
+        "text-align: center;"
+        "}"
+        "QProgressBar::chunk {"
+        "background-color: #2563eb;"
+        "border-radius: 5px;"
+        "}"
+    );
+
+    tankVisualizationLayout->addWidget(
+        tankVisualizationTitle
+    );
+
+    tankVisualizationLayout->addWidget(
+        tankLevelBar,
+        0,
+        Qt::AlignHCenter
+    );
+
+    tankVisualizationLayout->addWidget(
+        tankVisualizationValue
+    );
+
+    physicsLayout->addWidget(tankVisualizationCard);
+
 
     // Snapshot Information
 
@@ -977,7 +1064,6 @@ reportPath = QDir::cleanPath(reportPath);
     physicsLayout->addWidget(warningLabel);
 
     stackedWidget->addWidget(physicsPage);
-
 
     // =========================================
     // PAGE 5: SECURITY ALERTS
