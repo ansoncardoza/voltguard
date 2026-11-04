@@ -978,6 +978,7 @@ reportPath = QDir::cleanPath(reportPath);
 
     stackedWidget->addWidget(physicsPage);
 
+
     // =========================================
     // PAGE 5: SECURITY ALERTS
     // =========================================
@@ -994,29 +995,262 @@ reportPath = QDir::cleanPath(reportPath);
         "background-color: transparent;"
     );
 
-    QLabel *alertsInfo = new QLabel(
-        "Security Analysis Indicators\n\n"
-        "This section will display protocol validation failures, "
-        "invalid frames, and physics-related anomalies.\n\n"
-        "Important:\n"
-        "An anomaly indicator is evidence requiring investigation. "
-        "It does not establish malicious intent."
-    );
+    QLabel *scenarioInfo = new QLabel();
+    QLabel *protocolSummary = new QLabel();
+    QLabel *protocolDetails = new QLabel();
+    QLabel *physicsSummary = new QLabel();
+    QLabel *physicsDetails = new QLabel();
+    QLabel *interpretationInfo = new QLabel();
 
-    alertsInfo->setWordWrap(true);
-
-    alertsInfo->setStyleSheet(
+    scenarioInfo->setStyleSheet(
+        "font-size: 16px;"
+        "font-weight: bold;"
         "color: #334155;"
-        "font-size: 15px;"
-        "background-color: transparent;"
     );
+
+    protocolSummary->setStyleSheet(
+        "font-size: 17px;"
+        "font-weight: bold;"
+        "color: #1e293b;"
+    );
+
+    physicsSummary->setStyleSheet(
+        "font-size: 17px;"
+        "font-weight: bold;"
+        "color: #1e293b;"
+    );
+
+    protocolDetails->setStyleSheet(
+        "font-size: 14px;"
+        "color: #334155;"
+    );
+
+    physicsDetails->setStyleSheet(
+        "font-size: 14px;"
+        "color: #334155;"
+    );
+
+    interpretationInfo->setStyleSheet(
+        "font-size: 13px;"
+        "color: #475569;"
+        "background-color: #f1f5f9;"
+        "padding: 10px;"
+    );
+
+    scenarioInfo->setWordWrap(true);
+    protocolSummary->setWordWrap(true);
+    protocolDetails->setWordWrap(true);
+    physicsSummary->setWordWrap(true);
+    physicsDetails->setWordWrap(true);
+    interpretationInfo->setWordWrap(true);
+
+    // Load alerts from the selected scenario report
+    auto updateSecurityAlerts = [
+        scenarioSelector,
+        scenarioInfo,
+        protocolSummary,
+        protocolDetails,
+        physicsSummary,
+        physicsDetails,
+        interpretationInfo
+    ]()
+    {
+        QString selectedFile =
+            scenarioSelector->currentData().toString();
+
+        QString reportFile;
+
+        if (selectedFile == "process_snapshot.json")
+        {
+            reportFile = "normal_combined_analysis_report.json";
+        }
+        else if (selectedFile == "abnormal_process_snapshot.json")
+        {
+            reportFile = "abnormal_combined_analysis_report.json";
+        }
+        else
+        {
+            reportFile = "combined_analysis_report.json";
+        }
+
+        QString reportPath = QDir(
+            QCoreApplication::applicationDirPath()
+        ).filePath("../reports/" + reportFile);
+
+        QFile file(reportPath);
+
+        if (!file.open(QIODevice::ReadOnly))
+        {
+            scenarioInfo->setText("Selected scenario report");
+            protocolSummary->setText("Protocol Analysis: REPORT NOT FOUND");
+            protocolDetails->clear();
+            physicsSummary->setText("Physics Analysis: REPORT NOT FOUND");
+            physicsDetails->clear();
+            interpretationInfo->setText(
+                "Unable to load the selected combined analysis report."
+            );
+            return;
+        }
+
+        QByteArray reportData = file.readAll();
+        file.close();
+
+        QJsonParseError parseError;
+        QJsonDocument document =
+            QJsonDocument::fromJson(reportData, &parseError);
+
+        if (parseError.error != QJsonParseError::NoError ||
+            !document.isObject())
+        {
+            scenarioInfo->setText("Selected scenario report");
+            protocolSummary->setText("Protocol Analysis: INVALID REPORT");
+            protocolDetails->clear();
+            physicsSummary->setText("Physics Analysis: INVALID REPORT");
+            physicsDetails->clear();
+            interpretationInfo->setText(
+                "The report could not be parsed as valid JSON."
+            );
+            return;
+        }
+
+        QJsonObject root = document.object();
+
+        // Scenario information
+        scenarioInfo->setText(
+            "Scenario: " + scenarioSelector->currentText()
+        );
+
+        // Protocol analysis
+        QJsonObject parserAnalysis =
+            root.value("parser_analysis").toObject();
+
+        QJsonObject parserSummary =
+            parserAnalysis.value("summary").toObject();
+
+        int totalFrames =
+            parserSummary.value("total_frames").toInt();
+
+        int validRequests =
+            parserSummary.value("valid_requests").toInt();
+
+        int validationFailures =
+            parserSummary.value("validation_failures").toInt();
+
+        int invalidFrames =
+            parserSummary.value("invalid_frames").toInt();
+
+        int malformedInputs =
+            parserSummary.value("malformed_inputs").toInt();
+
+        protocolSummary->setText(
+            "Protocol Analysis"
+        );
+
+        protocolDetails->setText(
+            "Total Frames: " + QString::number(totalFrames) + "\n"
+            "Valid Requests: " + QString::number(validRequests) + "\n"
+            "Validation Failures: " + QString::number(validationFailures) + "\n"
+            "Invalid Frames: " + QString::number(invalidFrames) + "\n"
+            "Malformed Inputs: " + QString::number(malformedInputs)
+        );
+
+        // Physics analysis
+        QJsonObject physicsAnalysis =
+            root.value("physics_analysis").toObject();
+
+        QJsonObject validationResult =
+            physicsAnalysis.value("validation_result").toObject();
+
+        bool physicsValid =
+            validationResult.value("valid").toBool();
+
+        QJsonArray violations =
+            validationResult.value("violations").toArray();
+
+        QJsonArray warnings =
+            validationResult.value("warnings").toArray();
+
+        physicsSummary->setText(
+            "Physics Analysis: " +
+            QString(physicsValid ? "VALID" : "ANOMALY INDICATORS FOUND")
+        );
+
+        physicsDetails->setText(
+            "Violations: " + QString::number(violations.size()) + "\n"
+            "Warnings: " + QString::number(warnings.size())
+        );
+
+        if (!violations.isEmpty())
+        {
+            physicsDetails->setText(
+                physicsDetails->text() + "\n\nDetected Violations:"
+            );
+
+            for (const QJsonValue &value : violations)
+            {
+                physicsDetails->setText(
+                    physicsDetails->text() + "\n- " + value.toString()
+                );
+            }
+        }
+
+        if (!warnings.isEmpty())
+        {
+            physicsDetails->setText(
+                physicsDetails->text() + "\n\nWarnings:"
+            );
+
+            for (const QJsonValue &value : warnings)
+            {
+                physicsDetails->setText(
+                    physicsDetails->text() + "\n- " + value.toString()
+                );
+            }
+        }
+
+        if (violations.isEmpty() && warnings.isEmpty())
+        {
+            physicsDetails->setText(
+                physicsDetails->text() +
+                "\nNo physics violations or warnings recorded."
+            );
+        }
+
+        interpretationInfo->setText(
+            "Interpretation: Protocol validation failures and physics "
+            "anomalies are indicators requiring investigation. "
+            "They do not independently establish malicious intent. "
+            "All displayed results come from local synthetic simulations."
+        );
+    };
+
+    // Refresh alerts when the scenario changes
+    QObject::connect(
+        scenarioSelector,
+        &QComboBox::currentIndexChanged,
+        alertsPage,
+        [updateSecurityAlerts](int)
+        {
+            updateSecurityAlerts();
+        }
+    );
+
+    // Load the initial scenario
+    updateSecurityAlerts();
 
     alertsLayout->addWidget(alertsTitle);
-    alertsLayout->addWidget(alertsInfo);
+    alertsLayout->addWidget(scenarioInfo);
+    alertsLayout->addSpacing(8);
+    alertsLayout->addWidget(protocolSummary);
+    alertsLayout->addWidget(protocolDetails);
+    alertsLayout->addSpacing(8);
+    alertsLayout->addWidget(physicsSummary);
+    alertsLayout->addWidget(physicsDetails);
+    alertsLayout->addSpacing(8);
+    alertsLayout->addWidget(interpretationInfo);
     alertsLayout->addStretch();
 
     stackedWidget->addWidget(alertsPage);
-
 
     // =========================================
     // PAGE 6: REPORTS
