@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 
 #include <QProgressBar>
 #include <QComboBox>
@@ -454,14 +454,14 @@ void MainWindow::createPages()
     QLabel *protocolInfo = new QLabel(
         "Modbus/TCP Protocol Analysis\n\n"
         "Supported Functions:\n"
-        "• Function Code 03 - Read Holding Registers\n"
-        "• Function Code 06 - Write Single Register\n\n"
+        "â€¢ Function Code 03 - Read Holding Registers\n"
+        "â€¢ Function Code 06 - Write Single Register\n\n"
         "Validation Checks:\n"
-        "• MBAP header validation\n"
-        "• Protocol identifier validation\n"
-        "• Message length validation\n"
-        "• Function code validation\n"
-        "• Register address and quantity validation\n\n"
+        "â€¢ MBAP header validation\n"
+        "â€¢ Protocol identifier validation\n"
+        "â€¢ Message length validation\n"
+        "â€¢ Function code validation\n"
+        "â€¢ Register address and quantity validation\n\n"
         "Detailed parser results are available in "
         "data/generated/parser_results.json."
     );
@@ -617,7 +617,7 @@ void MainWindow::createPages()
     physicsGrid->addWidget(pumpCard, 0, 1);
     physicsGrid->addWidget(valveCard, 1, 0);
     physicsGrid->addWidget(flowCard, 1, 1);
-    
+
     // Tank Level Visualization
 
     QFrame *tankVisualizationCard = new QFrame();
@@ -1085,6 +1085,8 @@ reportPath = QDir::cleanPath(reportPath);
     QLabel *protocolSummary = new QLabel();
     QLabel *protocolDetails = new QLabel();
     QLabel *physicsSummary = new QLabel();
+    QLabel *decisionSummary = new QLabel();
+    QLabel *decisionDetails = new QLabel();
     QLabel *physicsDetails = new QLabel();
     QLabel *interpretationInfo = new QLabel();
 
@@ -1116,6 +1118,17 @@ reportPath = QDir::cleanPath(reportPath);
         "color: #334155;"
     );
 
+    decisionSummary->setStyleSheet(
+    "font-size: 19px;"
+    "font-weight: bold;"
+    "color: #b91c1c;"
+    );
+
+    decisionDetails->setStyleSheet(
+    "font-size: 14px;"
+    "color: #334155;"
+    );
+
     interpretationInfo->setStyleSheet(
         "font-size: 13px;"
         "color: #475569;"
@@ -1128,6 +1141,8 @@ reportPath = QDir::cleanPath(reportPath);
     protocolDetails->setWordWrap(true);
     physicsSummary->setWordWrap(true);
     physicsDetails->setWordWrap(true);
+    decisionSummary->setWordWrap(true);
+    decisionDetails->setWordWrap(true);
     interpretationInfo->setWordWrap(true);
 
     // Load alerts from the selected scenario report
@@ -1137,6 +1152,8 @@ reportPath = QDir::cleanPath(reportPath);
         protocolSummary,
         protocolDetails,
         physicsSummary,
+        decisionSummary,
+        decisionDetails,
         physicsDetails,
         interpretationInfo
     ]()
@@ -1200,6 +1217,123 @@ reportPath = QDir::cleanPath(reportPath);
         }
 
         QJsonObject root = document.object();
+
+                    // Load the simulated Decision Engine report
+        QString decisionReportFile;
+
+        if (selectedFile == "process_snapshot.json")
+        {
+            decisionReportFile = "normal_decision_report.json";
+        }
+        else if (selectedFile == "abnormal_process_snapshot.json")
+        {
+            decisionReportFile = "abnormal_decision_report.json";
+        }
+        else
+        {
+            decisionReportFile = "combined_decision_report.json";
+        }
+
+        QString decisionReportPath = QDir(
+            QCoreApplication::applicationDirPath()
+        ).filePath("../reports/" + decisionReportFile);
+
+        QFile decisionFile(decisionReportPath);
+
+        if (!decisionFile.open(QIODevice::ReadOnly))
+        {
+            decisionSummary->setText(
+                "SIMULATED DECISION: REPORT NOT FOUND"
+            );
+            decisionDetails->setText(
+                "Unable to load the Decision Engine report: " +
+                decisionReportFile
+            );
+        }
+        else
+        {
+            QByteArray decisionData = decisionFile.readAll();
+            decisionFile.close();
+
+            QJsonParseError decisionParseError;
+            QJsonDocument decisionDocument =
+                QJsonDocument::fromJson(
+                    decisionData,
+                    &decisionParseError
+                );
+
+            if (decisionParseError.error != QJsonParseError::NoError ||
+                !decisionDocument.isObject())
+            {
+                decisionSummary->setText(
+                    "SIMULATED DECISION: INVALID REPORT"
+                );
+                decisionDetails->setText(
+                    "The Decision Engine report contains invalid JSON."
+                );
+            }
+            else
+            {
+                QJsonObject decisionRoot = decisionDocument.object();
+                QJsonObject decisionAnalysis =
+                    decisionRoot.value("decision_analysis").toObject();
+
+                QString decision =
+                    decisionAnalysis.value("decision").toString("UNKNOWN");
+
+                QJsonObject evidence =
+                    decisionAnalysis.value("evidence").toObject();
+
+                decisionSummary->setText(
+                    "SIMULATED DECISION: " + decision
+                );
+
+                QString details =
+                    "Total Frames: " +
+                    QString::number(
+                        evidence.value("total_frames").toInt()
+                    ) +
+                    "\nValid Requests: " +
+                    QString::number(
+                        evidence.value("valid_requests").toInt()
+                    ) +
+                    "\nValidation Failures: " +
+                    QString::number(
+                        evidence.value("validation_failures").toInt()
+                    ) +
+                    "\nInvalid Frames: " +
+                    QString::number(
+                        evidence.value("invalid_frames").toInt()
+                    ) +
+                    "\nMalformed Inputs: " +
+                    QString::number(
+                        evidence.value("malformed_inputs").toInt()
+                    ) +
+                    "\nPhysics Valid: " +
+                    QString(
+                        evidence.value("physics_valid").toBool()
+                        ? "YES" : "NO"
+                    ) +
+                    "\nPhysics Violations: " +
+                    QString::number(
+                        evidence.value("physics_violations").toInt()
+                    ) +
+                    "\nPhysics Warnings: " +
+                    QString::number(
+                        evidence.value("physics_warnings").toInt()
+                    );
+
+                QJsonArray reasons =
+                    decisionAnalysis.value("reasons").toArray();
+
+                for (const QJsonValue &reason : reasons)
+                {
+                    details += "\n- " + reason.toString();
+                }
+
+                decisionDetails->setText(details);
+            }
+        }
 
         // Scenario information
         scenarioInfo->setText(
@@ -1332,6 +1466,9 @@ reportPath = QDir::cleanPath(reportPath);
     alertsLayout->addSpacing(8);
     alertsLayout->addWidget(physicsSummary);
     alertsLayout->addWidget(physicsDetails);
+    alertsLayout->addSpacing(8);
+    alertsLayout->addWidget(decisionSummary);
+    alertsLayout->addWidget(decisionDetails);
     alertsLayout->addSpacing(8);
     alertsLayout->addWidget(interpretationInfo);
     alertsLayout->addStretch();
