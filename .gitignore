@@ -37,3 +37,8 @@ dist/
 
 # Additional Python-generated files
 *.egg-info/
+# Generated analysis outputs
+/reports/abnormal_decision_report.json
+/reports/combined_decision_report.json
+/reports/normal_decision_report.json
+/reports/performance_benchmark_report.json
