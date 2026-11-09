@@ -11,8 +11,22 @@ from src.python.integration.json_bridge import (
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-GENERATOR_EXE = PROJECT_ROOT / "build-release" / "voltguard_generator.exe"
-PARSER_EXE = PROJECT_ROOT / "build-release" / "voltguard_parser.exe"
+def locate_executable(filename: str) -> Path:
+    """Find a component in the packaged app or development build folder."""
+
+    candidates = [
+        PROJECT_ROOT / "app" / filename,
+        PROJECT_ROOT / "build-release" / filename,
+    ]
+
+    for executable in candidates:
+        if executable.is_file():
+            return executable
+
+    searched = ", ".join(str(path) for path in candidates)
+    raise FileNotFoundError(
+        f"Required executable not found. Searched: {searched}"
+    )
 
 DATA_DIR = PROJECT_ROOT / "data" / "generated"
 REPORT_DIR = PROJECT_ROOT / "reports"
@@ -98,14 +112,14 @@ def main() -> int:
 
         # 1. Generate synthetic Modbus/TCP traffic.
         run_executable(
-            GENERATOR_EXE,
-            "Synthetic Modbus/TCP Traffic Generator",
+        locate_executable("voltguard_generator.exe"),
+        "Synthetic Modbus/TCP Traffic Generator",
         )
 
         # 2. Parse and validate generated frames.
         run_executable(
-            PARSER_EXE,
-            "C++ Modbus/TCP Parser",
+        locate_executable("voltguard_parser.exe"),
+        "C++ Modbus/TCP Parser",
         )
 
         if not PARSER_REPORT.is_file():
