@@ -5,6 +5,7 @@
 
 class QStackedWidget;
 class QPushButton;
+class QProcess;
 
 class MainWindow : public QMainWindow
 {
@@ -16,6 +17,7 @@ public:
 
 private:
     QStackedWidget *stackedWidget;
+    QProcess *analysisProcess;
 
     QPushButton *overviewButton;
     QPushButton *networkButton;
