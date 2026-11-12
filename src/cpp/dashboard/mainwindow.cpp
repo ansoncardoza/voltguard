@@ -64,7 +64,9 @@ MainWindow::MainWindow(QWidget *parent)
       tankLevelChart(nullptr),
       trafficSummary(nullptr),
       trafficTable(nullptr),
-      frameDetails(nullptr)
+      frameDetails(nullptr),
+      liveProtocolSummary(nullptr),
+      liveProtocolFindingsSummary(nullptr)
    {
     setWindowTitle("VoltGuard - ICS/SCADA Security Dashboard");
     resize(1100, 700);
@@ -1119,6 +1121,51 @@ QLabel *protocolStatusInfo = new QLabel(
     "Loading protocol analysis..."
 );
 
+// Live Protocol Analysis panel
+liveProtocolSummary = new QLabel(
+    "LIVE PROTOCOL ANALYSIS\n\n"
+    "Live Frames: 0\n"
+    "FC03 Frames: 0\n"
+    "FC06 Frames: 0\n"
+    "Unsupported Functions: 0\n"
+    "Valid Frames: 0\n"
+    "Validation Failures: 0\n"
+    "Invalid Frames: 0"
+);
+
+liveProtocolSummary->setWordWrap(true);
+
+liveProtocolSummary->setStyleSheet(
+    "background-color: #e0f2fe;"
+    "color: #0c4a6e;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 16px;"
+    "border-radius: 8px;"
+);
+
+// Live Protocol Validation Findings panel
+liveProtocolFindingsSummary = new QLabel(
+    "LIVE VALIDATION FINDINGS\n\n"
+    "Unsupported Function Code: 0\n"
+    "Invalid Register Quantity: 0\n"
+    "Invalid Data Length: 0\n"
+    "Invalid Unit ID: 0\n"
+    "Register Range Exceeded: 0\n"
+    "Invalid MBAP Frame: 0"
+);
+
+liveProtocolFindingsSummary->setWordWrap(true);
+
+liveProtocolFindingsSummary->setStyleSheet(
+    "background-color: #fef3c7;"
+    "color: #92400e;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 16px;"
+    "border-radius: 8px;"
+);
+
 protocolStatusInfo->setWordWrap(true);
 
 protocolStatusInfo->setStyleSheet(
@@ -1131,6 +1178,15 @@ protocolStatusInfo->setStyleSheet(
 protocolLayout->addWidget(protocolTitle);
 protocolLayout->addWidget(protocolSubtitle);
 protocolLayout->addLayout(protocolStatsLayout);
+
+// Side-by-side live protocol panels
+QHBoxLayout *liveProtocolLayout = new QHBoxLayout();
+liveProtocolLayout->setSpacing(15);
+
+liveProtocolLayout->addWidget(liveProtocolSummary, 1);
+liveProtocolLayout->addWidget(liveProtocolFindingsSummary, 1);
+
+protocolLayout->addLayout(liveProtocolLayout);
 
 protocolLayout->addWidget(functionChartTitle);
 protocolLayout->addWidget(functionChart);
@@ -1181,14 +1237,11 @@ else
         int fc03Count = 0;
         int fc06Count = 0;
         int unsupportedCount = 0;
-        int validCount = 0;
         int invalidQuantityCount = 0;
         int invalidLengthCount = 0;
         int invalidUnitCount = 0;
         int registerRangeCount = 0;
         int invalidMbapCount = 0;
-        int validationFailureCount = 0;
-        int invalidFrameCount = 0;
 
         for (const QJsonValue &value : protocolEvents)
         {
@@ -1222,13 +1275,6 @@ else
 
             if (reason == "UNSUPPORTED FUNCTION CODE")
                 ++unsupportedCount;
-
-            if (status == "VALID")
-                ++validCount;
-            else if (status == "VALIDATION_FAILED")
-                ++validationFailureCount;
-            else if (status == "INVALID_FRAME")
-                ++invalidFrameCount;
         }
 
         totalProtocolFrames->setText(
@@ -1327,21 +1373,7 @@ addFunctionBar("Invalid Unit ID", invalidUnitCount, "#ca8a04");
 addFunctionBar("Register Range Exceeded", registerRangeCount, "#9333ea");
 addFunctionBar("Invalid MBAP Frame", invalidMbapCount, "#64748b");
 
-        protocolStatusInfo->setText(
-            QString(
-                "Protocol Validation Summary\n\n"
-                "Valid Frames: %1\n"
-                "Validation Failures: %2\n"
-                "Invalid Frames: %3\n\n"
-                "FC03: Read Holding Registers\n"
-                "FC06: Write Single Register\n"
-                "Unsupported function code occurrences: %4"
-            )
-            .arg(validCount)
-            .arg(validationFailureCount)
-            .arg(invalidFrameCount)
-            .arg(unsupportedCount)
-        );
+protocolStatusInfo->setText("");
     }
 }
 
@@ -3225,6 +3257,109 @@ else if (liveStatus == "VALIDATION_FAILED")
 else if (liveStatus == "INVALID_FRAME")
 {
     ++liveInvalidFrameCount;
+}
+
+// Update live Protocol Analysis counters.
+++liveProtocolTotalFrames;
+
+int protocolFunctionCode =
+    modbusEvent.value("function_code").toInt(-1);
+
+if (protocolFunctionCode == 3)
+{
+    ++liveProtocolFC03Count;
+}
+else if (protocolFunctionCode == 6)
+{
+    ++liveProtocolFC06Count;
+}
+
+QString protocolReason =
+    modbusEvent.value("reason").toString();
+
+if (protocolReason == "UNSUPPORTED FUNCTION CODE")
+{
+    ++liveProtocolUnsupportedCount;
+}
+
+if (protocolReason.contains("INVALID REGISTER QUANTITY"))
+{
+    ++liveProtocolInvalidQuantityCount;
+}
+else if (protocolReason.contains("INVALID DATA LENGTH"))
+{
+    ++liveProtocolInvalidLengthCount;
+}
+else if (protocolReason == "INVALID UNIT ID")
+{
+    ++liveProtocolInvalidUnitCount;
+}
+else if (protocolReason.contains("REGISTER RANGE"))
+{
+    ++liveProtocolRegisterRangeCount;
+}
+else if (protocolReason.contains("MBAP"))
+{
+    ++liveProtocolInvalidMbapCount;
+}
+
+if (liveStatus == "VALID")
+{
+    ++liveProtocolValidCount;
+}
+else if (liveStatus == "VALIDATION_FAILED")
+{
+    ++liveProtocolValidationFailureCount;
+}
+else if (liveStatus == "INVALID_FRAME")
+{
+    ++liveProtocolInvalidFrameCount;
+}
+
+// Refresh Live Protocol Analysis panel.
+if (liveProtocolSummary != nullptr)
+{
+    liveProtocolSummary->setText(
+        QString(
+            "LIVE PROTOCOL ANALYSIS\n\n"
+            "Live Frames: %1\n"
+            "FC03 Frames: %2\n"
+            "FC06 Frames: %3\n"
+            "Unsupported Functions: %4\n"
+            "Valid Frames: %5\n"
+            "Validation Failures: %6\n"
+            "Invalid Frames: %7"
+        )
+        .arg(liveProtocolTotalFrames)
+        .arg(liveProtocolFC03Count)
+        .arg(liveProtocolFC06Count)
+        .arg(liveProtocolUnsupportedCount)
+        .arg(liveProtocolValidCount)
+        .arg(liveProtocolValidationFailureCount)
+        .arg(liveProtocolInvalidFrameCount)
+    );
+}
+
+// Refresh Live Protocol Validation Findings panel.
+if (liveProtocolFindingsSummary != nullptr)
+{
+    liveProtocolFindingsSummary->setText(
+        QString(
+            "LIVE VALIDATION FINDINGS\n\n"
+            "Unsupported Function Code: %1\n"
+            "Invalid Register Quantity: %2\n"
+            "Invalid Data Length: %3\n"
+            "Invalid Unit ID: %4\n"
+            "Register Range Exceeded: %5\n"
+            "Invalid MBAP Frame: %6"
+        )
+        .arg(liveProtocolUnsupportedCount)
+        .arg(liveProtocolInvalidQuantityCount)
+        .arg(liveProtocolInvalidLengthCount)
+        .arg(liveProtocolInvalidUnitCount)
+        .arg(liveProtocolRegisterRangeCount)
+        .arg(liveProtocolInvalidMbapCount)
+    );
 }
 
 // Display historical and live statistics separately.

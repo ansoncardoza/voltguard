@@ -70,6 +70,24 @@ private:
     int liveValidCount = 0;
     int liveValidationFailureCount = 0;
     int liveInvalidFrameCount = 0;
+ 
+    // Protocol Analysis live monitoring
+    QLabel *liveProtocolSummary;
+    QLabel *liveProtocolFindingsSummary;
+    int liveProtocolTotalFrames = 0;
+    int liveProtocolFC03Count = 0;
+    int liveProtocolFC06Count = 0;
+    int liveProtocolUnsupportedCount = 0;
+    int liveProtocolValidCount = 0;
+    int liveProtocolValidationFailureCount = 0;
+    int liveProtocolInvalidFrameCount = 0;
+
+    // Live protocol validation findings
+    int liveProtocolInvalidQuantityCount = 0;
+    int liveProtocolInvalidLengthCount = 0;
+    int liveProtocolInvalidUnitCount = 0;
+    int liveProtocolRegisterRangeCount = 0;
+    int liveProtocolInvalidMbapCount = 0;
 
     // Existing dashboard methods
     void createPages();
