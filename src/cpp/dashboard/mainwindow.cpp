@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QJsonArray>
 #include <QList>
+#include <QScrollArea>
 #include <QStackedWidget>
 #include <QPushButton>
 #include <QDesktopServices>
@@ -128,14 +129,22 @@ for (QPushButton *button : buttons)
 
 sidebarLayout->addStretch();
 
+// Stacked pages with vertical scrolling
+QScrollArea *contentScrollArea = new QScrollArea(centralWidget);
 
-    // Stacked pages
-    stackedWidget = new QStackedWidget(centralWidget);
+contentScrollArea->setWidgetResizable(true);
+contentScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+contentScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+contentScrollArea->setFrameShape(QFrame::NoFrame);
 
-    stackedWidget->setMinimumWidth(500);
-    stackedWidget->setStyleSheet(
+stackedWidget = new QStackedWidget();
+
+stackedWidget->setMinimumWidth(500);
+stackedWidget->setStyleSheet(
     "QStackedWidget { background-color: #f1f5f9; }"
 );
+
+contentScrollArea->setWidget(stackedWidget);
 
     analysisProcess = new QProcess(this);
 
@@ -161,7 +170,7 @@ sidebarLayout->addStretch();
             this, [this]() { switchPage(5); });
 
     mainLayout->addWidget(sidebar);
-    mainLayout->addWidget(stackedWidget, 1);
+    mainLayout->addWidget(contentScrollArea, 1);
 
     switchPage(0);
 }
