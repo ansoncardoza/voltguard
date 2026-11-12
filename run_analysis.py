@@ -47,7 +47,12 @@ SCENARIOS = {
 }
 
 
-def run_executable(executable: Path, description: str) -> None:
+def run_executable(
+    executable: Path,
+    description: str,
+    *arguments: str,
+) -> None:
+
     """Execute a VoltGuard C++ component and check its exit status."""
 
     if not executable.is_file():
@@ -58,7 +63,7 @@ def run_executable(executable: Path, description: str) -> None:
     print(f"\n[RUNNING] {description}")
 
     result = subprocess.run(
-        [str(executable)],
+        [str(executable), *arguments],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -110,16 +115,22 @@ def main() -> int:
         print("       VOLTGUARD ANALYSIS PIPELINE")
         print("========================================")
 
+
         # 1. Generate synthetic Modbus/TCP traffic.
+        traffic_mode = (
+            "normal" if args.scenario == "normal" else "mixed"
+        )
+
         run_executable(
-        locate_executable("voltguard_generator.exe"),
-        "Synthetic Modbus/TCP Traffic Generator",
+            locate_executable("voltguard_generator.exe"),
+            "Synthetic Modbus/TCP Traffic Generator",
+            traffic_mode,
         )
 
         # 2. Parse and validate generated frames.
         run_executable(
-        locate_executable("voltguard_parser.exe"),
-        "C++ Modbus/TCP Parser",
+            locate_executable("voltguard_parser.exe"),
+            "C++ Modbus/TCP Parser",
         )
 
         if not PARSER_REPORT.is_file():

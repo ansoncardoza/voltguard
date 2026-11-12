@@ -1,4 +1,3 @@
-
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
@@ -24,8 +23,8 @@ Frame createModbusFrame(
 {
     Frame frame;
 
-    append16(frame, transactionId); // Transaction ID
-    append16(frame, 0x0000);        // Protocol ID
+    append16(frame, transactionId);
+    append16(frame, 0x0000);
 
     std::uint16_t length =
         static_cast<std::uint16_t>(2 + data.size());
@@ -33,9 +32,9 @@ Frame createModbusFrame(
     if (malformedLength)
         length += 3;
 
-    append16(frame, length);        // Length
-    frame.push_back(unitId);        // Unit ID
-    frame.push_back(functionCode);  // Function Code
+    append16(frame, length);
+    frame.push_back(unitId);
+    frame.push_back(functionCode);
 
     frame.insert(frame.end(), data.begin(), data.end());
 
@@ -57,8 +56,29 @@ void printFrame(const Frame& frame, const std::string& label)
     std::cout << std::dec << "\n";
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+    std::string mode = "mixed";
+
+    if (argc > 2)
+    {
+        std::cerr << "Usage: voltguard_generator.exe [normal|mixed]\n";
+        return 1;
+    }
+
+    if (argc == 2)
+    {
+        mode = argv[1];
+
+        if (mode != "normal" && mode != "mixed")
+        {
+            std::cerr << "Error: Invalid mode. Use normal or mixed.\n";
+            return 1;
+        }
+    }
+
+    std::cout << "Traffic mode: " << mode << "\n";
+
     std::cout << "====================================\n";
     std::cout << "       VOLTGUARD SYSTEM             \n";
     std::cout << "  Modbus/TCP Traffic Generator      \n";
@@ -74,33 +94,36 @@ int main()
     frames.push_back(createModbusFrame(
         2, 1, 0x06, {0x00, 0x64, 0x00, 0x01}));
 
-    // 3. Anomalous test: Unsupported function code 0x45.
-    frames.push_back(createModbusFrame(
-        3, 1, 0x45, {0x00, 0x00}));
+    if (mode == "mixed")
+    {
+        // 3. Unsupported function code 0x45.
+        frames.push_back(createModbusFrame(
+            3, 1, 0x45, {0x00, 0x00}));
 
-    // 4. Anomalous test: Declared length does not match frame.
-    frames.push_back(createModbusFrame(
-        4, 1, 0x03, {0x00, 0x00, 0x00, 0x02}, true));
+        // 4. Declared length does not match frame.
+        frames.push_back(createModbusFrame(
+            4, 1, 0x03, {0x00, 0x00, 0x00, 0x02}, true));
 
-    // 5. Invalid FC03 quantity (zero).
-    frames.push_back(createModbusFrame(
-        5, 1, 0x03, {0x00, 0x00, 0x00, 0x00}));
+        // 5. Invalid FC03 quantity (zero).
+        frames.push_back(createModbusFrame(
+            5, 1, 0x03, {0x00, 0x00, 0x00, 0x00}));
 
-    // 6. Invalid FC03 quantity (126).
-    frames.push_back(createModbusFrame(
-        6, 1, 0x03, {0x00, 0x00, 0x00, 0x7E}));
+        // 6. Invalid FC03 quantity (126).
+        frames.push_back(createModbusFrame(
+            6, 1, 0x03, {0x00, 0x00, 0x00, 0x7E}));
 
-    // 7. FC03 incomplete data (only 3 bytes).
-    frames.push_back(createModbusFrame(
-        7, 1, 0x03, {0x00, 0x00, 0x00}));
+        // 7. FC03 incomplete data.
+        frames.push_back(createModbusFrame(
+            7, 1, 0x03, {0x00, 0x00, 0x00}));
 
-    // 8. Invalid Unit ID (0 under our test profile).
-    frames.push_back(createModbusFrame(
-        8, 0, 0x03, {0x00, 0x00, 0x00, 0x0A}));
+        // 8. Invalid Unit ID (0 under our test profile).
+        frames.push_back(createModbusFrame(
+            8, 0, 0x03, {0x00, 0x00, 0x00, 0x0A}));
 
-    // 9. Register range exceeds address space.
-    frames.push_back(createModbusFrame(
-        9, 1, 0x03, {0xFF, 0xFF, 0x00, 0x02}));
+        // 9. Register range exceeds address space.
+        frames.push_back(createModbusFrame(
+            9, 1, 0x03, {0xFF, 0xFF, 0x00, 0x02}));
+    }
 
     std::ofstream output(
         "data/generated/modbus_traffic.hex");
