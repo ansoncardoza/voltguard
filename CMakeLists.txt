@@ -46,6 +46,8 @@ add_executable(voltguard_dashboard
     src/cpp/dashboard/main.cpp
     src/cpp/dashboard/mainwindow.cpp
     src/cpp/dashboard/mainwindow.h
+    src/cpp/dashboard/livetankchart.cpp
+    src/cpp/dashboard/livetankchart.h
 )
 
 target_link_libraries(voltguard_dashboard

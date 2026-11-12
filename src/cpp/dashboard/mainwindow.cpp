@@ -1,11 +1,15 @@
 ﻿#include "mainwindow.h"
+#include "livetankchart.h"
 
 #include <QProgressBar>
 #include <QProcess>
 #include <QComboBox>
+#include <QDateTime>
+#include <QJsonValue>
 #include <QStringList>
 #include <QJsonArray>
 #include <QList>
+#include <QTimer>
 #include <QScrollArea>
 #include <QStackedWidget>
 #include <QPushButton>
@@ -37,12 +41,27 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       stackedWidget(nullptr),
       analysisProcess(nullptr),
+      liveSimulationProcess(nullptr),
+      liveDataWatchdog(nullptr),
       overviewButton(nullptr),
       networkButton(nullptr),
       protocolButton(nullptr),
       physicsButton(nullptr),
       alertsButton(nullptr),
-      reportsButton(nullptr)
+      reportsButton(nullptr),
+      liveScenarioSelector(nullptr),
+      startSimulationButton(nullptr),
+      stopSimulationButton(nullptr),
+      liveConnectionLabel(nullptr),
+      liveScenarioLabel(nullptr),
+      tankVolumeValueLabel(nullptr),
+      tankLevelValueLabel(nullptr),
+      pumpStatusValueLabel(nullptr),
+      inletFlowValueLabel(nullptr),
+      outletFlowValueLabel(nullptr),
+      validationValueLabel(nullptr),
+      tankLevelProgress(nullptr),
+      tankLevelChart(nullptr)
 {
     setWindowTitle("VoltGuard - ICS/SCADA Security Dashboard");
     resize(1100, 700);
@@ -147,8 +166,57 @@ stackedWidget->setStyleSheet(
 contentScrollArea->setWidget(stackedWidget);
 
     analysisProcess = new QProcess(this);
+    // Independent live simulation process
+    liveSimulationProcess = new QProcess(this);
+    // Receive continuous JSON Lines from Python
+connect(
+    liveSimulationProcess,
+    &QProcess::readyReadStandardOutput,
+    this,
+    &MainWindow::handleLiveOutput
+);
+
+// Monitor Python process errors
+connect(
+    liveSimulationProcess,
+    &QProcess::errorOccurred,
+    this,
+    [this](QProcess::ProcessError error)
+    {
+        Q_UNUSED(error);
+        liveConnectionLabel->setText(
+            "Simulation Error: " +
+            liveSimulationProcess->errorString()
+        );
+    }
+);
+
+    // Detect interrupted or stale live data
+    liveDataWatchdog = new QTimer(this);
+    liveDataWatchdog->setInterval(1000);
+    connect(
+    liveDataWatchdog,
+    &QTimer::timeout,
+    this,
+    &MainWindow::updateLiveConnectionStatus
+);
 
     createPages();
+
+// Live simulation button connections
+connect(
+    startSimulationButton,
+    &QPushButton::clicked,
+    this,
+    &MainWindow::startLiveSimulation
+);
+
+connect(
+    stopSimulationButton,
+    &QPushButton::clicked,
+    this,
+    &MainWindow::stopLiveSimulation
+);
 
     // Navigation button connections
     connect(overviewButton, &QPushButton::clicked,
@@ -175,173 +243,254 @@ contentScrollArea->setWidget(stackedWidget);
     switchPage(0);
 }
 
-MainWindow::~MainWindow() = default;
-
+MainWindow::~MainWindow()
+{
+    stopLiveSimulation();
+}
 
 // Create dashboard pages
 
 void MainWindow::createPages()
 {
+
     // =========================================
-    // PAGE 1: SYSTEM OVERVIEW
+    // PAGE 1: SYSTEM OVERVIEW - LIVE MONITORING
     // =========================================
 
     QWidget *overviewPage = new QWidget(stackedWidget);
     QVBoxLayout *overviewLayout = new QVBoxLayout(overviewPage);
 
+    overviewLayout->setSpacing(18);
+    overviewLayout->setContentsMargins(25, 25, 25, 25);
+
+    // -----------------------------------------
+    // Page Heading
+    // -----------------------------------------
+
     QLabel *overviewTitle = new QLabel("System Overview");
+
     overviewTitle->setStyleSheet(
         "font-size: 26px;"
         "font-weight: bold;"
         "color: #0f172a;"
-        "background-color: transparent;"
+        "background: transparent;"
     );
 
     QLabel *overviewSubtitle = new QLabel(
-        "Physics-Aware ICS/SCADA Intrusion Detection System"
+        "Live Physics-Aware ICS/SCADA Process Monitoring"
     );
 
     overviewSubtitle->setStyleSheet(
         "color: #64748b;"
         "font-size: 14px;"
-        "background-color: transparent;"
+        "background: transparent;"
     );
 
     overviewLayout->addWidget(overviewTitle);
     overviewLayout->addWidget(overviewSubtitle);
 
     // -----------------------------------------
-    // Read Combined JSON Report
+    // Simulation Controls
     // -----------------------------------------
 
-    QString reportPath = QDir(
-    QCoreApplication::applicationDirPath()
-    ).absoluteFilePath("../reports/combined_analysis_report.json");
+    QFrame *controlPanel = new QFrame();
 
-    reportPath = QDir::cleanPath(reportPath);
+    controlPanel->setStyleSheet(
+        "QFrame {"
+        "background: white;"
+        "border: 1px solid #020f20;"
+        "border-radius: 10px;"
+        "}"
+    );
 
-    QString totalFrames = "N/A";
-    QString validRequests = "N/A";
-    QString protocolAlerts = "N/A";
-    QString physicsStatus = "N/A";
-    QString overallStatus = "REPORT NOT LOADED";
+    QHBoxLayout *controlLayout = new QHBoxLayout(controlPanel);
 
-    QFile ReportFile(reportPath);
+    QLabel *modeLabel = new QLabel("Simulation Scenario:");
 
-    if (ReportFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    liveScenarioSelector = new QComboBox();
+
+    liveScenarioSelector->addItem(
+    "Normal Tank Filling",
+    "normal_filling"
+    );
+
+    liveScenarioSelector->addItem(
+    "Pump OFF - Normal Water Consumption",
+    "pump_off_consumption"
+    );
+
+    liveScenarioSelector->setMinimumWidth(250);
+    liveScenarioSelector->setMinimumHeight(38);
+
+    liveScenarioSelector->setStyleSheet(
+    "QComboBox {"
+    "background-color: #ffffff;"
+    "color: #0f172a;"
+    "border: 1px solid #cbd5e1;"
+    "border-radius: 6px;"
+    "padding: 6px 10px;"
+    "font-size: 13px;"
+    "min-width: 250px;"
+    "}"
+    "QComboBox:hover {"
+    "border: 1px solid #2563eb;"
+    "}"
+    "QComboBox::drop-down {"
+    "width: 30px;"
+    "border: none;"
+    "background-color: #f1f5f9;"
+    "}"
+    "QComboBox QAbstractItemView {"
+    "background-color: #ffffff;"
+    "color: #0f172a;"
+    "selection-background-color: #506581;"
+    "selection-color: #0f172a;"
+    "border: 1px solid #cbd5e1;"
+    "outline: none;"
+    "}"
+    );
+
+    startSimulationButton = new QPushButton("Start Simulation");
+    stopSimulationButton = new QPushButton("Stop Simulation");
+
+    startSimulationButton->setStyleSheet(
+        "QPushButton {"
+        "background: #2563eb;"
+        "color: white;"
+        "padding: 10px 16px;"
+        "border-radius: 6px;"
+        "font-weight: bold;"
+        "}"
+        "QPushButton:hover { background: #1d4ed8; }"
+    );
+
+    stopSimulationButton->setStyleSheet(
+        "QPushButton {"
+        "background: #dc2626;"
+        "color: white;"
+        "padding: 10px 16px;"
+        "border-radius: 6px;"
+        "font-weight: bold;"
+        "}"
+        "QPushButton:hover { background: #b91c1c; }"
+    );
+
+    stopSimulationButton->setEnabled(false);
+
+    controlLayout->addWidget(modeLabel);
+    controlLayout->addWidget(liveScenarioSelector);
+    controlLayout->addStretch();
+    controlLayout->addWidget(startSimulationButton);
+    controlLayout->addWidget(stopSimulationButton);
+
+    overviewLayout->addWidget(controlPanel);
+
+    // -----------------------------------------
+    // Live Connection Status
+    // -----------------------------------------
+
+    liveConnectionLabel = new QLabel(
+        "● DISCONNECTED - Simulation not started"
+    );
+
+    liveConnectionLabel->setStyleSheet(
+        "background: #f1f5f9;"
+        "color: #f10505;"
+        "padding: 12px;"
+        "border-radius: 6px;"
+        "font-weight: bold;"
+    );
+
+    overviewLayout->addWidget(liveConnectionLabel);
+
+    liveScenarioLabel = new QLabel(
+    "Selected Scenario: " + liveScenarioSelector->currentText()
+    );
+
+    liveScenarioLabel->setStyleSheet(
+        "color: #334155;"
+        "font-size: 13px;"
+        "background: transparent;"
+    );
+
+    overviewLayout->addWidget(liveScenarioLabel);
+    // Keep the displayed scenario synchronized with the selector.
+connect(
+    liveScenarioSelector,
+    &QComboBox::currentTextChanged,
+    this,
+    [this](const QString &scenarioName)
     {
-        QJsonParseError parseError;
-
-        QJsonDocument document = QJsonDocument::fromJson(
-            ReportFile.readAll(),
-            &parseError
+        liveScenarioLabel->setText(
+            "Selected Scenario: " + scenarioName
         );
 
-        ReportFile.close();
-
-        if (parseError.error == QJsonParseError::NoError
-            && document.isObject())
+        // The pump remains OFF until a live sample confirms its state.
+        if (liveSimulationProcess->state() == QProcess::NotRunning)
         {
-            QJsonObject root = document.object();
-
-            QJsonObject parser =
-                root.value("parser_analysis").toObject();
-
-            QJsonObject summary =
-                parser.value("summary").toObject();
-
-            QJsonObject physics =
-                root.value("physics_analysis").toObject();
-
-            QJsonObject validation =
-                physics.value("validation_result").toObject();
-
-            if (summary.contains("total_frames")
-                && summary.contains("valid_requests")
-                && summary.contains("validation_failures")
-                && summary.contains("invalid_frames")
-                && validation.contains("valid"))
-            {
-                int total =
-                    summary.value("total_frames").toInt();
-
-                int valid =
-                    summary.value("valid_requests").toInt();
-
-                int failures =
-                    summary.value("validation_failures").toInt();
-
-                int invalid =
-                    summary.value("invalid_frames").toInt();
-
-                bool physicsValid =
-                    validation.value("valid").toBool();
-
-                totalFrames = QString::number(total);
-                validRequests = QString::number(valid);
-
-                protocolAlerts =
-                    QString::number(failures + invalid);
-
-                physicsStatus =
-                    physicsValid ? "VALID" : "ANOMALY";
-
-                overallStatus =
-                    root.value("overall_status").toString();
-            }
+            pumpStatusValueLabel->setText("OFF");
         }
     }
+);
 
     // -----------------------------------------
-    // Dashboard Card Creation Function
+    // Live Metric Cards
     // -----------------------------------------
 
-    QGridLayout *grid = new QGridLayout();
+    QGridLayout *metricsGrid = new QGridLayout();
 
-    auto createCard = [](
+    metricsGrid->setSpacing(15);
+
+    auto createLiveCard = [](
         const QString &title,
-        const QString &value,
+        const QString &initialValue,
         const QString &description,
-        const QString &color
+        const QString &color,
+        QLabel **valueOutput
     )
     {
         QFrame *card = new QFrame();
 
-        card->setMinimumHeight(140);
+        card->setMinimumHeight(105);
 
         card->setStyleSheet(
             "QFrame {"
-            "background-color: white;"
-            "border-radius: 10px;"
+            "background: white;"
             "border: 1px solid #e2e8f0;"
+            "border-radius: 10px;"
             "}"
         );
 
         QVBoxLayout *layout = new QVBoxLayout(card);
+        layout->setContentsMargins(12, 8, 12, 8);
+        layout->setSpacing(3);
 
         QLabel *titleLabel = new QLabel(title);
-        QLabel *valueLabel = new QLabel(value);
+        QLabel *valueLabel = new QLabel(initialValue);
         QLabel *descriptionLabel = new QLabel(description);
 
         titleLabel->setStyleSheet(
             "color: #64748b;"
-            "background-color: transparent;"
             "border: none;"
+            "background: transparent;"
         );
 
         valueLabel->setStyleSheet(
             "color: " + color +
-            "; font-size: 27px;"
-            "font-weight: bold;"
-            "background-color: transparent;"
-            "border: none;"
+            "; font-size: 21px;"
+            "; font-weight: bold;"
+            "; border: none;"
+            "; background: transparent;"
         );
 
         descriptionLabel->setStyleSheet(
             "color: #94a3b8;"
-            "background-color: transparent;"
+            "font-size: 11px;"
             "border: none;"
+            "background: transparent;"
         );
+
+        *valueOutput = valueLabel;
 
         layout->addWidget(titleLabel);
         layout->addWidget(valueLabel);
@@ -351,70 +500,165 @@ void MainWindow::createPages()
         return card;
     };
 
-    // -----------------------------------------
-    // Add Dashboard Cards
-    // -----------------------------------------
-
-    grid->addWidget(
-        createCard(
-            "Protocol Frames",
-            totalFrames,
-            "Total frames processed",
-            "#2563eb"
+    metricsGrid->addWidget(
+        createLiveCard(
+            "Tank Volume",
+            "-- L",
+            "Current simulated water volume",
+            "#2563eb",
+            &tankVolumeValueLabel
         ),
         0, 0
     );
 
-    grid->addWidget(
-        createCard(
-            "Valid Requests",
-            validRequests,
-            "Requests passing validation",
-            "#16a34a"
+    metricsGrid->addWidget(
+        createLiveCard(
+            "Tank Level",
+            "-- %",
+            "Current tank capacity utilization",
+            "#0891b2",
+            &tankLevelValueLabel
         ),
         0, 1
     );
 
-    grid->addWidget(
-        createCard(
-            "Protocol Alerts",
-            protocolAlerts,
-            "Validation failures and invalid frames",
-            "#dc2626"
+    metricsGrid->addWidget(
+        createLiveCard(
+            "Pump Status",
+            "OFF",
+            "Current simulated pump state",
+            "#64748b",
+            &pumpStatusValueLabel
+        ),
+        0, 2
+    );
+
+    metricsGrid->addWidget(
+        createLiveCard(
+            "Inlet Flow",
+            "-- L/min",
+            "Water entering the tank",
+            "#16a34a",
+            &inletFlowValueLabel
         ),
         1, 0
     );
 
-    grid->addWidget(
-        createCard(
-            "Physics Status",
-            physicsStatus,
-            "Process operating-condition validation",
-            physicsStatus == "VALID" ? "#16a34a" : "#dc2626"
+    metricsGrid->addWidget(
+        createLiveCard(
+            "Outlet Flow",
+            "-- L/min",
+            "Normal water consumption",
+            "#d97706",
+            &outletFlowValueLabel
         ),
         1, 1
     );
 
-    overviewLayout->addLayout(grid);
-
-    // Overall Analysis Status
-    QLabel *statusLabel = new QLabel(
-        "Overall Analysis Status: " + overallStatus
+    metricsGrid->addWidget(
+        createLiveCard(
+            "Physics Validation",
+            "WAITING",
+            "Operating-condition validation",
+            "#64748b",
+            &validationValueLabel
+        ),
+        1, 2
     );
 
-    statusLabel->setWordWrap(true);
+    overviewLayout->addLayout(metricsGrid);
 
-    statusLabel->setStyleSheet(
-        "background-color: white;"
-        "padding: 15px;"
+    // -----------------------------------------
+    // Tank Level Progress Visualization
+    // -----------------------------------------
+
+    QFrame *tankPanel = new QFrame();
+
+    tankPanel->setStyleSheet(
+        "QFrame {"
+        "background: white;"
         "border: 1px solid #e2e8f0;"
-        "border-radius: 8px;"
-        "color: #334155;"
+        "border-radius: 10px;"
+        "}"
     );
 
-    overviewLayout->addWidget(statusLabel);
-    overviewLayout->addStretch();
+    QVBoxLayout *tankLayout = new QVBoxLayout(tankPanel);
 
+    QLabel *tankTitle = new QLabel("Tank Level Monitoring");
+
+    tankTitle->setStyleSheet(
+        "font-size: 17px;"
+        "font-weight: bold;"
+        "color: #0f172a;"
+        "border: none;"
+        "background: transparent;"
+    );
+
+    tankLevelProgress = new QProgressBar();
+    tankLevelProgress->setRange(0, 100);
+    tankLevelProgress->setValue(0);
+    tankLevelProgress->setFormat("Waiting for live data...");
+    tankLevelProgress->setMinimumHeight(25);
+
+    tankLevelProgress->setStyleSheet(
+        "QProgressBar {"
+        "border: 1px solid #cbd5e1;"
+        "border-radius: 6px;"
+        "background: #f1f5f9;"
+        "text-align: center;"
+        "color: #0f172a;"
+        "}"
+        "QProgressBar::chunk {"
+        "background: #2563eb;"
+        "border-radius: 5px;"
+        "}"
+    );
+
+    tankLayout->addWidget(tankTitle);
+    tankLayout->addWidget(tankLevelProgress);
+
+    overviewLayout->addWidget(tankPanel);
+
+    // -----------------------------------------
+    // Live Tank Level History Graph
+    // -----------------------------------------
+
+    QFrame *chartPanel = new QFrame();
+
+    chartPanel->setStyleSheet(
+        "QFrame {"
+        "background: white;"
+        "border: 1px solid #e2e8f0;"
+        "border-radius: 10px;"
+        "}"
+    );
+
+    QVBoxLayout *chartLayout = new QVBoxLayout(chartPanel);
+
+    QLabel *chartTitle = new QLabel(
+        "Live Tank Level History"
+    );
+
+    chartTitle->setStyleSheet(
+        "font-size: 17px;"
+        "font-weight: bold;"
+        "color: #0f172a;"
+        "border: none;"
+        "background: transparent;"
+    );
+
+    tankLevelChart = new LiveTankChart();
+
+    chartLayout->addWidget(chartTitle);
+    chartLayout->addWidget(tankLevelChart);
+
+    overviewLayout->addWidget(chartPanel);
+
+    // -----------------------------------------
+    // Add Homepage
+    // -----------------------------------------
+
+    overviewLayout->addStretch();
     stackedWidget->addWidget(overviewPage);
 
     // =========================================
@@ -1128,14 +1372,14 @@ stackedWidget->addWidget(protocolPage);
         "background-color: transparent;"
     );
 
-    // Scenario Selector
+// Scenario Selector
 
-    QLabel *scenarioLabel = new QLabel("Select Test Scenario:");
+QLabel *scenarioLabel = new QLabel("Select Test Scenario:");
 
-    QComboBox *scenarioSelector = new QComboBox();
-
-    scenarioSelector->addItem("Normal Scenario", "process_snapshot.json");
-    scenarioSelector->addItem("Abnormal Scenario", "abnormal_process_snapshot.json");
+QComboBox *scenarioSelector = new QComboBox();
+scenarioSelector->addItem("Normal Scenario", "process_snapshot.json");
+scenarioSelector->addItem("Abnormal Scenario", "abnormal_process_snapshot.json");
+scenarioSelector->setMinimumWidth(250);
 
     scenarioSelector->setStyleSheet(
     "QComboBox {"
@@ -2698,14 +2942,375 @@ QObject::connect(
 void MainWindow::switchPage(int pageIndex)
 {
     if (stackedWidget == nullptr)
-    {
         return;
-    }
 
     if (pageIndex < 0 || pageIndex >= stackedWidget->count())
+        return;
+
+    stackedWidget->setCurrentIndex(pageIndex);
+}
+
+// Handle continuous JSON Lines from the Python simulation
+void MainWindow::handleLiveOutput()
+{
+    if (liveSimulationProcess == nullptr)
+        return;
+
+    // Append newly received output to the buffer.
+    liveOutputBuffer.append(
+        liveSimulationProcess->readAllStandardOutput()
+    );
+
+    // Extract every complete JSON line.
+    int newlineIndex = -1;
+
+    while ((newlineIndex = liveOutputBuffer.indexOf('\n')) >= 0)
+    {
+        QByteArray jsonLine =
+            liveOutputBuffer.left(newlineIndex).trimmed();
+
+        liveOutputBuffer.remove(0, newlineIndex + 1);
+
+        if (!jsonLine.isEmpty())
+        {
+            processLiveSample(jsonLine);
+        }
+    }
+
+    // Prevent an unexpectedly large incomplete message.
+    if (liveOutputBuffer.size() > 1024 * 1024)
+    {
+        liveOutputBuffer.clear();
+
+        liveConnectionLabel->setText(
+            "Simulation Error: Invalid output buffer"
+        );
+    }
+}
+// Parse one live simulation sample and update the dashboard
+void MainWindow::processLiveSample(const QByteArray &jsonLine)
+{
+        // Ignore delayed samples after the simulation has stopped.
+    if (liveSimulationProcess == nullptr ||
+        liveSimulationProcess->state() == QProcess::NotRunning)
+    {
+        return;
+    }
+    QJsonParseError parseError;
+
+    QJsonDocument document =
+        QJsonDocument::fromJson(jsonLine, &parseError);
+
+    if (parseError.error != QJsonParseError::NoError ||
+        !document.isObject())
+    {
+        liveConnectionLabel->setText(
+            "Simulation Error: Invalid JSON"
+        );
+        return;
+    }
+
+    QJsonObject root = document.object();
+
+    // Accept only live simulation data.
+    if (root.value("data_source").toString() != "SIMULATION" ||
+        root.value("data_status").toString() != "LIVE")
     {
         return;
     }
 
-    stackedWidget->setCurrentIndex(pageIndex);
+    QJsonObject processState =
+        root.value("process_state").toObject();
+
+    QJsonObject validation =
+        root.value("validation").toObject();
+
+    if (!root.contains("process_state") ||
+        !root.value("process_state").isObject() ||
+        !root.contains("validation") ||
+        !root.value("validation").isObject())
+    {
+        liveConnectionLabel->setText(
+            "Simulation Error: Incomplete sample"
+        );
+        return;
+    }
+
+    // Read actual simulation values.
+    double volume =
+        processState.value("tank_volume_liters").toDouble(-1.0);
+
+    double level =
+        processState.value("tank_level_percent").toDouble(-1.0);
+
+    double capacity =
+        processState.value("tank_capacity_liters").toDouble(-1.0);
+
+    double inletFlow =
+        processState.value("inflow_lpm").toDouble(-1.0);
+
+    double outletFlow =
+        processState.value("outflow_lpm").toDouble(-1.0);
+
+    bool pumpOn =
+        processState.value("pump_on").toBool();
+
+    if (volume < 0.0 || capacity <= 0.0 ||
+        level < 0.0 || level > 100.0 ||
+        inletFlow < 0.0 || outletFlow < 0.0)
+    {
+        liveConnectionLabel->setText(
+            "Simulation Error: Invalid process values"
+        );
+        return;
+    }
+
+    // Update tank volume and level.
+    tankVolumeValueLabel->setText(
+        QString("%1 / %2 L")
+            .arg(volume, 0, 'f', 2)
+            .arg(capacity, 0, 'f', 2)
+    );
+
+    tankLevelValueLabel->setText(
+        QString("%1%").arg(level, 0, 'f', 2)
+    );
+
+    tankLevelProgress->setValue(qBound(0, qRound(level), 100));
+
+    tankLevelProgress->setFormat(
+        QString("%1%").arg(level, 0, 'f', 2)
+    );
+
+    // Update pump state.
+    pumpStatusValueLabel->setText(
+        pumpOn ? "ON" : "OFF"
+    );
+
+    // Update actual inlet and outlet flow.
+    inletFlowValueLabel->setText(
+        QString("%1 L/min").arg(inletFlow, 0, 'f', 2)
+    );
+
+    outletFlowValueLabel->setText(
+        QString("%1 L/min").arg(outletFlow, 0, 'f', 2)
+    );
+
+    // Update physics validation.
+    bool valid = validation.value("valid").toBool(false);
+
+    QJsonArray violations =
+        validation.value("violations").toArray();
+
+    QJsonArray warnings =
+        validation.value("warnings").toArray();
+
+    QString validationText;
+
+    if (!valid || !violations.isEmpty())
+    {
+        validationText = "INVALID";
+    }
+    else if (!warnings.isEmpty())
+    {
+        validationText = "WARNING";
+    }
+    else
+    {
+        validationText = "VALID";
+    }
+
+    validationValueLabel->setText(validationText);
+
+    // Add the latest level to the live chart.
+    tankLevelChart->addDataPoint(level);
+
+    // Update scenario and connection information.
+    liveScenarioLabel->setText(
+        root.value("scenario_description").toString()
+    );
+
+    lastLiveSampleAt = QDateTime::currentDateTime();
+
+    liveConnectionLabel->setText(
+        QString("LIVE SIMULATION | Sample #%1")
+            .arg(root.value("sequence").toInt())
+    );
+
+    // Keep the connection watchdog active.
+    if (!liveDataWatchdog->isActive())
+    {
+        liveDataWatchdog->start();
+    }
+}
+// Start the continuous Python live simulation
+void MainWindow::startLiveSimulation()
+{
+    if (liveSimulationProcess == nullptr)
+        return;
+
+    if (liveSimulationProcess->state() != QProcess::NotRunning)
+        stopLiveSimulation();
+
+    QString projectRoot = QDir(
+        QCoreApplication::applicationDirPath()
+    ).absoluteFilePath("..");
+
+    projectRoot = QDir::cleanPath(projectRoot);
+
+    QString pythonExecutable = QDir(projectRoot).filePath(
+        ".venv/Scripts/python.exe"
+    );
+
+    if (!QFile::exists(pythonExecutable))
+    {
+        liveConnectionLabel->setText(
+            "ERROR: Python virtual environment not found."
+        );
+        return;
+    }
+
+    QString scenario =
+        liveScenarioSelector->currentData().toString();
+
+    if (scenario.isEmpty())
+    {
+        liveConnectionLabel->setText(
+            "ERROR: No simulation scenario selected."
+        );
+        return;
+    }
+
+    // Reset the previous live session.
+    liveOutputBuffer.clear();
+    tankLevelChart->clearData();
+
+    liveConnectionLabel->setText("● LIVE SIMULATION");
+    liveConnectionLabel->setStyleSheet(
+    "color: #16a34a;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    );
+    liveScenarioLabel->setText(
+    "Selected Scenario: " + liveScenarioSelector->currentText()
+    );
+
+    tankVolumeValueLabel->setText("--");
+    tankLevelValueLabel->setText("--");
+    pumpStatusValueLabel->setText("OFF");
+    inletFlowValueLabel->setText("--");
+    outletFlowValueLabel->setText("--");
+    validationValueLabel->setText("WAITING");
+
+    tankLevelProgress->setValue(0);
+    tankLevelProgress->setFormat("Waiting for data...");
+
+    // Launch Python from the project root.
+    liveSimulationProcess->setWorkingDirectory(projectRoot);
+
+    QStringList arguments;
+    arguments << "-m"
+              << "src.python.integration.live_simulation"
+              << "--scenario"
+              << scenario
+              << "--interval"
+              << "1";
+
+    lastLiveSampleAt = QDateTime::currentDateTime();
+
+    // Start watchdog immediately, including during startup.
+    liveDataWatchdog->start();
+
+    startSimulationButton->setEnabled(false);
+    stopSimulationButton->setEnabled(true);
+
+    liveSimulationProcess->start(
+        pythonExecutable,
+        arguments
+    );
+}
+// Stop the live Python simulation safely
+void MainWindow::stopLiveSimulation()
+{
+    if (liveDataWatchdog != nullptr)
+        liveDataWatchdog->stop();
+
+    if (liveSimulationProcess != nullptr &&
+        liveSimulationProcess->state() != QProcess::NotRunning)
+    {
+        liveSimulationProcess->terminate();
+
+        if (!liveSimulationProcess->waitForFinished(1500))
+        {
+            liveSimulationProcess->kill();
+            liveSimulationProcess->waitForFinished(1000);
+        }
+    }
+
+    liveOutputBuffer.clear();
+
+    if (pumpStatusValueLabel != nullptr)
+        pumpStatusValueLabel->setText("OFF");
+
+    if (validationValueLabel != nullptr)
+        validationValueLabel->setText("NOT RUN");
+
+    if (startSimulationButton != nullptr)
+        startSimulationButton->setEnabled(true);
+
+    if (stopSimulationButton != nullptr)
+        stopSimulationButton->setEnabled(false);
+
+    if (liveConnectionLabel != nullptr)
+    {
+        liveConnectionLabel->setText("SIMULATION STOPPED");
+
+        liveConnectionLabel->setStyleSheet(
+            "color: #dc2626;"
+            "font-size: 14px;"
+            "font-weight: bold;"
+        );
+    }
+}
+
+// Detect stopped processes and stale live samples
+void MainWindow::updateLiveConnectionStatus()
+{
+    if (liveSimulationProcess == nullptr ||
+        liveDataWatchdog == nullptr)
+    {
+        return;
+    }
+
+    if (liveSimulationProcess->state() == QProcess::NotRunning)
+    {
+        liveDataWatchdog->stop();
+
+        liveConnectionLabel->setText(
+            "SIMULATION STOPPED"
+        );
+        liveConnectionLabel->setStyleSheet(
+        "color: #dc2626;"
+        "font-size: 14px;"
+        "font-weight: bold;"
+        );
+
+        startSimulationButton->setEnabled(true);
+        stopSimulationButton->setEnabled(false);
+
+        return;
+    }
+
+    if (!lastLiveSampleAt.isValid())
+        return;
+
+    qint64 elapsedMilliseconds =
+        lastLiveSampleAt.msecsTo(QDateTime::currentDateTime());
+
+    if (elapsedMilliseconds > 3000)
+    {
+        liveConnectionLabel->setText(
+            "WARNING: LIVE DATA STALE"
+        );
+    }
 }
