@@ -8,11 +8,18 @@
 #include <QList>
 #include <QStackedWidget>
 #include <QPushButton>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QLabel>
 #include <QFrame>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QHeaderView>
+#include <QAbstractItemView>
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QProgressBar>
 #include <QGridLayout>
 #include <QFile>
 #include <QDir>
@@ -22,6 +29,8 @@
 #include <QJsonParseError>
 #include <QComboBox>
 #include <QStringList>
+#include <QColor>
+#include <QBrush>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -399,7 +408,6 @@ void MainWindow::createPages()
 
     stackedWidget->addWidget(overviewPage);
 
-
     // =========================================
     // PAGE 2: NETWORK TRAFFIC
     // =========================================
@@ -416,73 +424,674 @@ void MainWindow::createPages()
         "background-color: transparent;"
     );
 
-    QLabel *networkInfo = new QLabel(
-        "Synthetic Modbus/TCP Traffic Monitoring\n\n"
-        "Traffic Source: data/generated/modbus_traffic.hex\n"
-        "Environment: LOCAL_TEST\n\n"
-        "This page is prepared for displaying generated "
-        "industrial protocol traffic."
+    QLabel *networkSubtitle = new QLabel(
+        "Synthetic Modbus/TCP Traffic Monitoring | LOCAL_TEST"
     );
 
-    networkInfo->setWordWrap(true);
-
-    networkInfo->setStyleSheet(
-        "color: #334155;"
-        "font-size: 15px;"
+    networkSubtitle->setStyleSheet(
+        "color: #64748b;"
+        "font-size: 14px;"
         "background-color: transparent;"
     );
 
-    networkLayout->addWidget(networkTitle);
-    networkLayout->addWidget(networkInfo);
-    networkLayout->addStretch();
+    QLabel *trafficSummary = new QLabel(
+        "Loading traffic statistics..."
+    );
 
-    stackedWidget->addWidget(networkPage);
+    trafficSummary->setStyleSheet(
+        "font-size: 15px;"
+        "font-weight: bold;"
+        "color: #334155;"
+        "background-color: transparent;"
+    );
 
+    QTableWidget *trafficTable = new QTableWidget();
 
-    // =========================================
-    // PAGE 3: PROTOCOL ANALYSIS
-    // =========================================
+    trafficTable->setColumnCount(5);
 
-    QWidget *protocolPage = new QWidget(stackedWidget);
-    QVBoxLayout *protocolLayout = new QVBoxLayout(protocolPage);
+    trafficTable->setHorizontalHeaderLabels({
+        "Frame",
+        "Transaction ID",
+        "Function Code",
+        "Status",
+        "Validation Result"
+    });
 
-    QLabel *protocolTitle = new QLabel("Protocol Analysis");
+    trafficTable->setEditTriggers(
+        QAbstractItemView::NoEditTriggers
+    );
 
-    protocolTitle->setStyleSheet(
-        "font-size: 26px;"
+    trafficTable->setSelectionBehavior(
+        QAbstractItemView::SelectRows
+    );
+
+    trafficTable->setSelectionMode(
+        QAbstractItemView::SingleSelection
+    );
+
+    trafficTable->verticalHeader()->setVisible(false);
+
+    trafficTable->horizontalHeader()->setSectionResizeMode(
+        QHeaderView::ResizeToContents
+    );
+
+    trafficTable->horizontalHeader()->setStretchLastSection(true);
+
+    trafficTable->setMinimumHeight(180);
+    trafficTable->setShowGrid(true);
+    trafficTable->setAlternatingRowColors(true);
+
+    trafficTable->setStyleSheet(
+    "QTableWidget {"
+    "background-color: #1e293b;"
+    "color: #f1f5f9;"
+    "gridline-color: #475569;"
+    "border: 1px solid #475569;"
+    "font-size: 13px;"
+    "}"
+    "QTableWidget::item {"
+    "color: #f1f5f9;"
+    "padding: 6px;"
+    "}"
+    "QTableWidget::item:selected {"
+    "background-color: #2563eb;"
+    "color: #ffffff;"
+    "}"
+    "QHeaderView::section {"
+    "background-color: #334155;"
+    "color: #ffffff;"
+    "padding: 8px;"
+    "border: 1px solid #475569;"
+    "font-weight: bold;"
+    "}"
+     );
+
+    QLabel *frameDetailsTitle = new QLabel("Selected Frame Details");
+
+    frameDetailsTitle->setStyleSheet(
+        "font-size: 17px;"
         "font-weight: bold;"
         "color: #0f172a;"
         "background-color: transparent;"
     );
 
-    QLabel *protocolInfo = new QLabel(
-        "Modbus/TCP Protocol Analysis\n\n"
-        "Supported Functions:\n"
-        "â€¢ Function Code 03 - Read Holding Registers\n"
-        "â€¢ Function Code 06 - Write Single Register\n\n"
-        "Validation Checks:\n"
-        "â€¢ MBAP header validation\n"
-        "â€¢ Protocol identifier validation\n"
-        "â€¢ Message length validation\n"
-        "â€¢ Function code validation\n"
-        "â€¢ Register address and quantity validation\n\n"
-        "Detailed parser results are available in "
-        "data/generated/parser_results.json."
+    QLabel *frameDetails = new QLabel(
+        "Select a traffic frame to inspect its parsed information."
     );
 
-    protocolInfo->setWordWrap(true);
+    frameDetails->setWordWrap(true);
 
-    protocolInfo->setStyleSheet(
+    frameDetails->setStyleSheet(
         "color: #334155;"
-        "font-size: 15px;"
+        "font-size: 14px;"
         "background-color: transparent;"
     );
 
-    protocolLayout->addWidget(protocolTitle);
-    protocolLayout->addWidget(protocolInfo);
-    protocolLayout->addStretch();
+    networkLayout->addWidget(networkTitle);
+    networkLayout->addWidget(networkSubtitle);
+    networkLayout->addWidget(trafficSummary);
+    networkLayout->addWidget(trafficTable, 1);
+    networkLayout->addWidget(frameDetailsTitle);
+    networkLayout->addWidget(frameDetails);
 
-    stackedWidget->addWidget(protocolPage);
+    // Load C++ parser results
+
+    QString trafficReportPath = QDir(
+        QCoreApplication::applicationDirPath()
+    ).absoluteFilePath("../data/generated/parser_results.json");
+
+    trafficReportPath = QDir::cleanPath(trafficReportPath);
+
+    QFile trafficFile(trafficReportPath);
+
+    if (!trafficFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        trafficSummary->setText(
+            "Traffic Analysis: REPORT NOT FOUND"
+        );
+    }
+    else
+    {
+        QJsonParseError trafficParseError;
+
+        QJsonDocument trafficDocument = QJsonDocument::fromJson(
+            trafficFile.readAll(),
+            &trafficParseError
+        );
+
+        trafficFile.close();
+
+        if (trafficParseError.error != QJsonParseError::NoError ||
+            !trafficDocument.isObject())
+        {
+            trafficSummary->setText(
+                "Traffic Analysis: INVALID REPORT"
+            );
+        }
+        else
+        {
+            QJsonObject trafficObject = trafficDocument.object();
+
+            QJsonArray events = trafficObject.value("events").toArray();
+
+            int validCount = 0;
+            int validationFailureCount = 0;
+            int invalidFrameCount = 0;
+
+            trafficTable->setRowCount(events.size());
+
+            for (int i = 0; i < events.size(); ++i)
+            {
+                QJsonObject event = events.at(i).toObject();
+
+                QString status = event.value("status").toString();
+
+                if (status == "VALID")
+                {
+                    ++validCount;
+                }
+                else if (status == "VALIDATION_FAILED")
+                {
+                    ++validationFailureCount;
+                }
+                else if (status == "INVALID_FRAME")
+                {
+                    ++invalidFrameCount;
+                }
+
+                QString frameNumber =
+                    QString::number(event.value("frame_number").toInt());
+
+                QString transactionId = event.contains("transaction_id")
+                    ? QString::number(
+                        event.value("transaction_id").toInt()
+                    )
+                    : "N/A";
+
+                QString functionCode = event.contains("function_code")
+                    ? QString("0x%1").arg(
+                        event.value("function_code").toInt(),
+                        2,
+                        16,
+                        QChar('0')
+                    ).toUpper()
+                    : "N/A";
+
+                QString reason = event.value("reason").toString();
+
+                trafficTable->setItem(
+                    i, 0, new QTableWidgetItem(frameNumber)
+                );
+
+                trafficTable->setItem(
+                    i, 1, new QTableWidgetItem(transactionId)
+                );
+
+                trafficTable->setItem(
+                    i, 2, new QTableWidgetItem(functionCode)
+                );
+
+                trafficTable->setItem(
+                    i, 3, new QTableWidgetItem(status)
+                );
+
+                trafficTable->setItem(
+                    i, 4, new QTableWidgetItem(reason)
+                );
+
+                trafficTable->item(i, 3)->setData(
+    Qt::UserRole,
+    QJsonDocument(event).toJson(QJsonDocument::Compact)
+);
+
+// Apply status-based row highlighting
+QColor rowColor;
+QColor textColor("#f1f5f9");
+
+if (status == "VALID")
+{
+    rowColor = QColor("#14532d");
+}
+else if (status == "VALIDATION_FAILED")
+{
+    rowColor = QColor("#78350f");
+}
+else if (status == "INVALID_FRAME")
+{
+    rowColor = QColor("#7f1d1d");
+}
+else
+{
+    rowColor = QColor("#334155");
+}
+
+// Apply colors to all five columns
+for (int column = 0; column < trafficTable->columnCount(); ++column)
+{
+    QTableWidgetItem *cell = trafficTable->item(i, column);
+
+    if (cell)
+    {
+        cell->setBackground(QBrush(rowColor));
+        cell->setForeground(QBrush(textColor));
+    }
+}
+} // End of event-population loop
+
+            trafficSummary->setText(
+                QString("Total Frames: %1    |    Valid: %2    |    "
+                        "Validation Failures: %3    |    Invalid Frames: %4")
+                    .arg(events.size())
+                    .arg(validCount)
+                    .arg(validationFailureCount)
+                    .arg(invalidFrameCount)
+            );
+        }
+    }
+
+    // Display details when a frame is selected
+
+    connect(
+        trafficTable,
+        &QTableWidget::cellClicked,
+        this,
+        [trafficTable, frameDetails](int row, int column)
+        {
+            Q_UNUSED(column);
+
+            QTableWidgetItem *item = trafficTable->item(row, 3);
+
+            if (!item)
+                return;
+
+            QByteArray eventData =
+                item->data(Qt::UserRole).toByteArray();
+
+            QJsonDocument document =
+                QJsonDocument::fromJson(eventData);
+
+            QJsonObject event = document.object();
+
+            QString details;
+
+            details += "Frame Number: " +
+                QString::number(event.value("frame_number").toInt()) + "\n";
+
+            details += "Status: " +
+                event.value("status").toString() + "\n";
+
+            details += "Reason: " +
+                event.value("reason").toString() + "\n";
+
+            details += "Transaction ID: " +
+                (event.contains("transaction_id")
+                    ? QString::number(
+                        event.value("transaction_id").toInt()
+                    )
+                    : "N/A") + "\n";
+
+            details += "Unit ID: " +
+                (event.contains("unit_id")
+                    ? QString::number(
+                        event.value("unit_id").toInt()
+                    )
+                    : "N/A") + "\n";
+
+            details += "Function Code: " +
+                (event.contains("function_code")
+                    ? QString("0x%1").arg(
+                        event.value("function_code").toInt(),
+                        2,
+                        16,
+                        QChar('0')
+                    ).toUpper()
+                    : "N/A") + "\n";
+
+            details += "Start Address: " +
+                (event.contains("start_address")
+                    ? QString::number(
+                        event.value("start_address").toInt()
+                    )
+                    : "N/A") + "\n";
+
+            details += "Quantity: " +
+    (event.contains("quantity")
+        ? QString::number(
+            event.value("quantity").toInt()
+        )
+        : "N/A") + "\n\n";
+
+    // Function Code 0x06: Write Single Register details
+        if (event.contains("register_address") &&
+            event.contains("register_value"))
+    {
+    details += "\nRegister Address: " +
+        QString::number(
+            event.value("register_address").toInt()
+        ) + "\n";
+
+    details += "Register Write Value: " +
+        QString::number(
+            event.value("register_value").toInt()
+        ) + "\n";
+    }
+
+        // Raw hexadecimal frame
+        details += "Raw Hexadecimal Frame:\n";
+
+    details += event.contains("raw_hex")
+    ? event.value("raw_hex").toString()
+    : "Raw frame data unavailable.";
+
+    frameDetails->setText(details);
+        }
+    );
+
+    stackedWidget->addWidget(networkPage);
+
+
+// =========================================
+// PAGE 3: PROTOCOL ANALYSIS
+// =========================================
+
+QWidget *protocolPage = new QWidget(stackedWidget);
+QVBoxLayout *protocolLayout = new QVBoxLayout(protocolPage);
+
+QLabel *protocolTitle = new QLabel("Protocol Analysis");
+
+protocolTitle->setStyleSheet(
+    "font-size: 26px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+);
+
+QLabel *protocolSubtitle = new QLabel(
+    "Modbus/TCP Function Code and Protocol Validation Analysis"
+);
+
+protocolSubtitle->setStyleSheet(
+    "color: #64748b;"
+    "font-size: 14px;"
+    "background-color: transparent;"
+);
+
+// Protocol statistics
+QLabel *totalProtocolFrames = new QLabel("Total Frames: --");
+QLabel *fc03Frames = new QLabel("FC03 Frames: --");
+QLabel *fc06Frames = new QLabel("FC06 Frames: --");
+QLabel *unsupportedFunctions = new QLabel("Unsupported Functions: --");
+
+QString protocolCardStyle =
+    "background-color: #1e293b;"
+    "color: #f1f5f9;"
+    "font-size: 15px;"
+    "font-weight: bold;"
+    "padding: 18px;"
+    "border-radius: 8px;";
+
+totalProtocolFrames->setStyleSheet(protocolCardStyle);
+fc03Frames->setStyleSheet(protocolCardStyle);
+fc06Frames->setStyleSheet(protocolCardStyle);
+unsupportedFunctions->setStyleSheet(protocolCardStyle);
+
+QHBoxLayout *protocolStatsLayout = new QHBoxLayout();
+
+protocolStatsLayout->addWidget(totalProtocolFrames);
+protocolStatsLayout->addWidget(fc03Frames);
+protocolStatsLayout->addWidget(fc06Frames);
+protocolStatsLayout->addWidget(unsupportedFunctions);
+
+QLabel *functionChartTitle = new QLabel(
+    "Function Code Distribution"
+);
+
+functionChartTitle->setStyleSheet(
+    "font-size: 18px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+);
+
+QWidget *functionChart = new QWidget(protocolPage);
+functionChart->setMinimumHeight(180);
+
+QVBoxLayout *functionChartLayout =
+    new QVBoxLayout(functionChart);
+
+functionChartLayout->setSpacing(12);
+
+QLabel *protocolStatusInfo = new QLabel(
+    "Loading protocol analysis..."
+);
+
+protocolStatusInfo->setWordWrap(true);
+
+protocolStatusInfo->setStyleSheet(
+    "color: #334155;"
+    "font-size: 14px;"
+    "background-color: transparent;"
+);
+
+// Add widgets to page
+protocolLayout->addWidget(protocolTitle);
+protocolLayout->addWidget(protocolSubtitle);
+protocolLayout->addLayout(protocolStatsLayout);
+
+protocolLayout->addWidget(functionChartTitle);
+protocolLayout->addWidget(functionChart);
+
+protocolLayout->addWidget(protocolStatusInfo);
+protocolLayout->addStretch();
+
+// Load C++ parser results
+QString protocolReportPath = QDir(
+    QCoreApplication::applicationDirPath()
+).absoluteFilePath("../data/generated/parser_results.json");
+
+protocolReportPath = QDir::cleanPath(protocolReportPath);
+
+QFile protocolFile(protocolReportPath);
+
+if (!protocolFile.open(QIODevice::ReadOnly | QIODevice::Text))
+{
+    protocolStatusInfo->setText(
+        "Protocol Analysis: REPORT NOT FOUND"
+    );
+}
+else
+{
+    QJsonParseError protocolParseError;
+
+    QJsonDocument protocolDocument = QJsonDocument::fromJson(
+        protocolFile.readAll(),
+        &protocolParseError
+    );
+
+    protocolFile.close();
+
+    if (protocolParseError.error != QJsonParseError::NoError ||
+        !protocolDocument.isObject())
+    {
+        protocolStatusInfo->setText(
+            "Protocol Analysis: INVALID REPORT"
+        );
+    }
+    else
+    {
+        QJsonObject protocolObject = protocolDocument.object();
+
+        QJsonArray protocolEvents =
+            protocolObject.value("events").toArray();
+
+        int fc03Count = 0;
+        int fc06Count = 0;
+        int unsupportedCount = 0;
+        int validCount = 0;
+        int invalidQuantityCount = 0;
+        int invalidLengthCount = 0;
+        int invalidUnitCount = 0;
+        int registerRangeCount = 0;
+        int invalidMbapCount = 0;
+        int validationFailureCount = 0;
+        int invalidFrameCount = 0;
+
+        for (const QJsonValue &value : protocolEvents)
+        {
+            QJsonObject event = value.toObject();
+
+            int functionCode =
+                event.value("function_code").toInt(-1);
+
+            QString status =
+                event.value("status").toString();
+
+            QString reason =
+                event.value("reason").toString();
+
+                if (reason.contains("INVALID REGISTER QUANTITY"))
+    ++invalidQuantityCount;
+     else if (reason.contains("INVALID DATA LENGTH"))
+    ++invalidLengthCount;
+     else if (reason == "INVALID UNIT ID")
+    ++invalidUnitCount;
+     else if (reason.contains("REGISTER RANGE"))
+    ++registerRangeCount;
+     else if (reason.contains("MBAP"))
+    ++invalidMbapCount;
+
+            if (functionCode == 3)
+                ++fc03Count;
+
+            if (functionCode == 6)
+                ++fc06Count;
+
+            if (reason == "UNSUPPORTED FUNCTION CODE")
+                ++unsupportedCount;
+
+            if (status == "VALID")
+                ++validCount;
+            else if (status == "VALIDATION_FAILED")
+                ++validationFailureCount;
+            else if (status == "INVALID_FRAME")
+                ++invalidFrameCount;
+        }
+
+        totalProtocolFrames->setText(
+            QString("Total Frames: %1").arg(protocolEvents.size())
+        );
+
+        fc03Frames->setText(
+            QString("FC03 Frames: %1").arg(fc03Count)
+        );
+
+        fc06Frames->setText(
+            QString("FC06 Frames: %1").arg(fc06Count)
+        );
+
+        unsupportedFunctions->setText(
+            QString("Unsupported Functions: %1").arg(unsupportedCount)
+        );
+
+
+// Create a reusable function-code chart bar
+auto addFunctionBar = [&](const QString &label,
+                          int count,
+                          const QString &color)
+{
+    QLabel *barLabel = new QLabel(
+        QString("%1 (%2)").arg(label).arg(count)
+    );
+
+    barLabel->setStyleSheet(
+        "color: #334155;"
+        "font-size: 13px;"
+        "font-weight: bold;"
+        "background-color: transparent;"
+    );
+
+    QProgressBar *bar = new QProgressBar();
+
+    bar->setRange(0, qMax(1, protocolEvents.size()));
+    bar->setValue(count);
+    bar->setTextVisible(false);
+    bar->setFixedHeight(18);
+
+    bar->setStyleSheet(
+        "QProgressBar {"
+        "background-color: #e2e8f0;"
+        "border: none;"
+        "border-radius: 8px;"
+        "}"
+        "QProgressBar::chunk {"
+        "background-color: " + color + ";"
+        "border-radius: 8px;"
+        "}"
+    );
+
+    functionChartLayout->addWidget(barLabel);
+    functionChartLayout->addWidget(bar);
+};
+
+// Add function-code distribution bars
+addFunctionBar(
+    "FC03 - Read Holding Registers",
+    fc03Count,
+    "#2563eb"
+);
+
+addFunctionBar(
+    "FC06 - Write Single Register",
+    fc06Count,
+    "#16a34a"
+);
+
+addFunctionBar(
+    "Unsupported Function Codes",
+    unsupportedCount,
+    "#dc2626"
+);
+
+// Validation findings chart
+QLabel *validationTitle = new QLabel(
+    "Protocol Validation Findings"
+);
+
+validationTitle->setStyleSheet(
+    "font-size: 18px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+);
+
+functionChartLayout->addWidget(validationTitle);
+
+addFunctionBar("Unsupported Function Code", unsupportedCount, "#dc2626");
+addFunctionBar("Invalid Register Quantity", invalidQuantityCount, "#ea580c");
+addFunctionBar("Invalid Data Length", invalidLengthCount, "#d97706");
+addFunctionBar("Invalid Unit ID", invalidUnitCount, "#ca8a04");
+addFunctionBar("Register Range Exceeded", registerRangeCount, "#9333ea");
+addFunctionBar("Invalid MBAP Frame", invalidMbapCount, "#64748b");
+
+        protocolStatusInfo->setText(
+            QString(
+                "Protocol Validation Summary\n\n"
+                "Valid Frames: %1\n"
+                "Validation Failures: %2\n"
+                "Invalid Frames: %3\n\n"
+                "FC03: Read Holding Registers\n"
+                "FC06: Write Single Register\n"
+                "Unsupported function code occurrences: %4"
+            )
+            .arg(validCount)
+            .arg(validationFailureCount)
+            .arg(invalidFrameCount)
+            .arg(unsupportedCount)
+        );
+    }
+}
+
+stackedWidget->addWidget(protocolPage);
 
     // =========================================
     // PAGE 4: PHYSICS MONITORING
@@ -775,6 +1384,8 @@ void MainWindow::createPages()
         pumpValue,
         valveValue,
         flowValue,
+        tankLevelBar,
+        tankVisualizationValue,
         snapshotInfo,
         physicsStatusLabel,
         validationSummary,
@@ -865,6 +1476,12 @@ reportPath = QDir::cleanPath(reportPath);
                 {
                     double level =
                         process.value("tank_level_percent").toDouble();
+
+                    tankLevelBar->setValue(qRound(level));
+
+                        tankVisualizationValue->setText(
+                        "Tank Level: " + QString::number(level, 'f', 1) + "%"
+                    );
 
                     bool pump =
                         process.value("pump_on").toBool();
@@ -1196,6 +1813,8 @@ reportPath = QDir::cleanPath(reportPath);
             interpretationInfo->setText(
                 "Unable to load the selected combined analysis report."
             );
+            decisionSummary->setText("SIMULATED DECISION: NOT AVAILABLE");
+            decisionDetails->clear();
             return;
         }
 
@@ -1217,6 +1836,8 @@ reportPath = QDir::cleanPath(reportPath);
             interpretationInfo->setText(
                 "The report could not be parsed as valid JSON."
             );
+            decisionSummary->setText("SIMULATED DECISION: NOT AVAILABLE");
+            decisionDetails->clear();
             return;
         }
 
@@ -1291,6 +1912,23 @@ reportPath = QDir::cleanPath(reportPath);
                 decisionSummary->setText(
                     "SIMULATED DECISION: " + decision
                 );
+
+                QString decisionColor = "#d97706";
+
+if (decision == "ALLOW")
+{
+    decisionColor = "#15803d";
+}
+else if (decision == "BLOCK")
+{
+    decisionColor = "#dc2626";
+}
+
+decisionSummary->setStyleSheet(
+    "font-size: 19px;"
+    "font-weight: bold;"
+    "color: " + decisionColor + ";"
+);
 
                 QString details =
                     "Total Frames: " +
@@ -1395,8 +2033,14 @@ reportPath = QDir::cleanPath(reportPath);
             validationResult.value("warnings").toArray();
 
         physicsSummary->setText(
-            "Physics Analysis: " +
-            QString(physicsValid ? "VALID" : "ANOMALY INDICATORS FOUND")
+        "Physics Analysis: " +
+         QString(physicsValid ? "VALID" : "ANOMALY INDICATORS FOUND")
+        );
+
+        physicsSummary->setStyleSheet(
+        physicsValid
+          ? "font-size: 17px; font-weight: bold; color: #15803d;"
+          : "font-size: 17px; font-weight: bold; color: #dc2626;"
         );
 
         physicsDetails->setText(
@@ -1495,6 +2139,18 @@ reportPath = QDir::cleanPath(reportPath);
         "background-color: transparent;"
     );
 
+    QLabel *reportsSubtitle = new QLabel(
+    "View analysis results, protocol reports and generated security evidence."
+);
+
+reportsSubtitle->setWordWrap(true);
+
+reportsSubtitle->setStyleSheet(
+    "font-size: 14px;"
+    "color: #64748b;"
+    "background-color: transparent;"
+);
+
     QLabel *reportsInfo = new QLabel(
         "VoltGuard Analysis Reports\n\n"
         "Combined Analysis Report:\n"
@@ -1511,6 +2167,78 @@ reportPath = QDir::cleanPath(reportPath);
         "font-size: 15px;"
         "background-color: transparent;"
     );
+
+    // Report summary cards
+
+QHBoxLayout *reportCardsLayout = new QHBoxLayout();
+
+QString reportCardStyle =
+    "background-color: #1e293b;"
+    "color: #f1f5f9;"
+    "font-size: 15px;"
+    "font-weight: bold;"
+    "padding: 20px;"
+    "border-radius: 8px;";
+
+QLabel *combinedReportCard = new QLabel(
+    "COMBINED ANALYSIS\nProtocol + Physics"
+);
+
+QLabel *protocolReportCard = new QLabel(
+    "PROTOCOL REPORT\nModbus/TCP Analysis"
+);
+
+QLabel *decisionReportCard = new QLabel(
+    "DECISION REPORT\nSecurity Assessment"
+);
+
+combinedReportCard->setStyleSheet(reportCardStyle);
+protocolReportCard->setStyleSheet(reportCardStyle);
+decisionReportCard->setStyleSheet(reportCardStyle);
+
+// Check report availability
+
+QString reportsPath = QDir(
+    QCoreApplication::applicationDirPath()
+).absoluteFilePath("../reports");
+
+QString dataPath = QDir(
+    QCoreApplication::applicationDirPath()
+).absoluteFilePath("../data/generated");
+
+bool combinedAvailable =
+    QFile::exists(QDir(reportsPath).filePath("normal_combined_analysis_report.json")) &&
+    QFile::exists(QDir(reportsPath).filePath("abnormal_combined_analysis_report.json"));
+
+bool protocolAvailable =
+    QFile::exists(QDir(dataPath).filePath("parser_results.json"));
+
+bool decisionAvailable =
+    QFile::exists(QDir(reportsPath).filePath("normal_decision_report.json")) &&
+    QFile::exists(QDir(reportsPath).filePath("abnormal_decision_report.json"));
+
+combinedReportCard->setText(
+    QString("COMBINED ANALYSIS\nProtocol + Physics\n%1")
+        .arg(combinedAvailable ? "REPORTS AVAILABLE" : "REPORTS MISSING")
+);
+
+protocolReportCard->setText(
+    QString("PROTOCOL REPORT\nModbus/TCP Analysis\n%1")
+        .arg(protocolAvailable ? "REPORT AVAILABLE" : "REPORT MISSING")
+);
+
+decisionReportCard->setText(
+    QString("DECISION REPORT\nSecurity Assessment\n%1")
+        .arg(decisionAvailable ? "REPORTS AVAILABLE" : "REPORTS MISSING")
+);
+
+combinedReportCard->setMinimumHeight(85);
+protocolReportCard->setMinimumHeight(85);
+decisionReportCard->setMinimumHeight(85);
+
+reportCardsLayout->addWidget(combinedReportCard);
+reportCardsLayout->addWidget(protocolReportCard);
+reportCardsLayout->addWidget(decisionReportCard);
 
     QPushButton *runAnalysisButton =
         new QPushButton("Run Analysis");
@@ -1544,12 +2272,247 @@ reportPath = QDir::cleanPath(reportPath);
     analysisStatusLabel->setWordWrap(true);
 
     analysisStatusLabel->setStyleSheet(
-        "color: #334155;"
-        "font-size: 14px;"
-        "background-color: transparent;"
+    "color: #15803d;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "background-color: #f0fdf4;"
+    "padding: 10px;"
+    "border-radius: 6px;"
     );
 
     reportsLayout->addWidget(reportsTitle);
+    reportsLayout->addWidget(reportsSubtitle);
+    reportsLayout->addSpacing(12);
+    reportsLayout->addLayout(reportCardsLayout);
+    QLabel *reportLocationTitle = new QLabel(
+    "Report Storage Location"
+);
+
+reportLocationTitle->setStyleSheet(
+    "font-size: 18px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+);
+
+QLabel *reportLocationInfo = new QLabel(
+    "Generated reports: ../reports/\n"
+    "Protocol parser data: ../data/generated/"
+);
+
+reportLocationInfo->setStyleSheet(
+    "font-size: 14px;"
+    "color: #475569;"
+    "background-color: #f1f5f9;"
+    "padding: 12px;"
+    "border-radius: 6px;"
+);
+
+reportLocationInfo->setWordWrap(true);
+
+reportsLayout->addWidget(reportLocationTitle);
+reportsLayout->addWidget(reportLocationInfo);
+QPushButton *openReportsFolderButton = new QPushButton(
+    "Open Reports Folder"
+);
+
+openReportsFolderButton->setStyleSheet(
+    "background-color: #2563eb;"
+    "color: white;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 12px;"
+    "border-radius: 6px;"
+);
+
+reportsLayout->addWidget(openReportsFolderButton);
+QPushButton *openCombinedReportButton = new QPushButton(
+    "Open Combined Analysis Report"
+);
+
+openCombinedReportButton->setStyleSheet(
+    "background-color: #0f766e;"
+    "color: white;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 12px;"
+    "border-radius: 6px;"
+);
+
+reportsLayout->addWidget(openCombinedReportButton);
+QPushButton *openAbnormalCombinedReportButton = new QPushButton(
+    "Open Abnormal Combined Analysis Report"
+);
+
+openAbnormalCombinedReportButton->setStyleSheet(
+    "background-color: #be123c;"
+    "color: white;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 12px;"
+    "border-radius: 6px;"
+);
+
+reportsLayout->addWidget(openAbnormalCombinedReportButton);
+QPushButton *openProtocolReportButton = new QPushButton(
+    "Open Protocol Parser Report"
+);
+
+openProtocolReportButton->setStyleSheet(
+    "background-color: #7c3aed;"
+    "color: white;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 12px;"
+    "border-radius: 6px;"
+);
+
+reportsLayout->addWidget(openProtocolReportButton);
+QObject::connect(
+    openCombinedReportButton,
+    &QPushButton::clicked,
+    reportsPage,
+    [reportsPath]()
+    {
+        QString reportFile = QDir(reportsPath).filePath(
+            "normal_combined_analysis_report.json"
+        );
+
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile(reportFile)
+        );
+    }
+);
+reportsLayout->addWidget(openCombinedReportButton);
+
+openProtocolReportButton->setStyleSheet(
+    "background-color: #7c3aed;"
+    "color: white;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 12px;"
+    "border-radius: 6px;"
+);
+
+reportsLayout->addWidget(openProtocolReportButton);
+QPushButton *openDecisionReportButton = new QPushButton(
+    "Open Security Decision Report"
+);
+
+openDecisionReportButton->setStyleSheet(
+    "background-color: #b45309;"
+    "color: white;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 12px;"
+    "border-radius: 6px;"
+);
+
+reportsLayout->addWidget(openDecisionReportButton);
+QPushButton *openAbnormalDecisionReportButton = new QPushButton(
+    "Open Abnormal Security Decision Report"
+);
+
+openAbnormalDecisionReportButton->setStyleSheet(
+    "background-color: #991b1b;"
+    "color: white;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "padding: 12px;"
+    "border-radius: 6px;"
+);
+
+reportsLayout->addWidget(openAbnormalDecisionReportButton);
+
+// Combined Analysis Report
+QObject::connect(
+    openCombinedReportButton,
+    &QPushButton::clicked,
+    reportsPage,
+    [reportsPath]()
+    {
+        QString reportFile = QDir(reportsPath).filePath(
+            "normal_combined_analysis_report.json"
+        );
+
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile(reportFile)
+        );
+    }
+);
+
+// Protocol Parser Report — ADD THIS CONNECTION HERE
+QObject::connect(
+    openProtocolReportButton,
+    &QPushButton::clicked,
+    reportsPage,
+    [dataPath]()
+    {
+        QString reportFile = QDir(dataPath).filePath(
+            "parser_results.json"
+        );
+
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile(reportFile)
+        );
+    }
+);
+QObject::connect(
+    openDecisionReportButton,
+    &QPushButton::clicked,
+    reportsPage,
+    [reportsPath]()
+    {
+        QString reportFile = QDir(reportsPath).filePath(
+            "normal_decision_report.json"
+        );
+
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile(reportFile)
+        );
+    }
+);
+QObject::connect(
+    openAbnormalCombinedReportButton,
+    &QPushButton::clicked,
+    reportsPage,
+    [reportsPath]()
+    {
+        QString reportFile = QDir(reportsPath).filePath(
+            "abnormal_combined_analysis_report.json"
+        );
+
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile(reportFile)
+        );
+    }
+);
+QObject::connect(
+    openAbnormalDecisionReportButton,
+    &QPushButton::clicked,
+    reportsPage,
+    [reportsPath]()
+    {
+        QString reportFile = QDir(reportsPath).filePath(
+            "abnormal_decision_report.json"
+        );
+
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile(reportFile)
+        );
+    }
+);
+QObject::connect(
+    openReportsFolderButton,
+    &QPushButton::clicked,
+    reportsPage,
+    [reportsPath]()
+    {
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile(reportsPath)
+        );
+    }
+);
     reportsLayout->addWidget(reportsInfo);
     reportsLayout->addSpacing(15);
     reportsLayout->addWidget(runAnalysisButton);
@@ -1592,6 +2555,14 @@ reportPath = QDir::cleanPath(reportPath);
                     "Analysis Status: Python environment not found.\n"
                     "Install dependencies using INSTALLATION.md."
                 );
+                analysisStatusLabel->setStyleSheet(
+    "color: #b45309;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "background-color: #fffbeb;"
+    "padding: 10px;"
+    "border-radius: 6px;"
+);
                 return;
             }
 
@@ -1600,6 +2571,14 @@ reportPath = QDir::cleanPath(reportPath);
                 analysisStatusLabel->setText(
                     "Analysis Status: run_analysis.py not found."
                 );
+                analysisStatusLabel->setStyleSheet(
+    "color: #15803d;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "background-color: #f0fdf4;"
+    "padding: 10px;"
+    "border-radius: 6px;"
+);
                 return;
             }
 
@@ -1642,10 +2621,17 @@ reportPath = QDir::cleanPath(reportPath);
             if (exitStatus == QProcess::NormalExit && exitCode == 0)
             {
                 analysisStatusLabel->setText(
-                    "Analysis Status: COMPLETED SUCCESSFULLY.\n"
-                    "Reports have been generated."
-                );
-
+        "Analysis Status: COMPLETED SUCCESSFULLY.\n"
+        "Reports have been generated."
+    );
+            analysisStatusLabel->setStyleSheet(
+    "color: #15803d;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "background-color: #f0fdf4;"
+    "padding: 10px;"
+    "border-radius: 6px;"
+);
                 updatePhysicsScenario();
                 updateSecurityAlerts();
             }
@@ -1655,6 +2641,14 @@ reportPath = QDir::cleanPath(reportPath);
                     "Analysis Status: FAILED.\n"
                     "Exit code: " + QString::number(exitCode)
                 );
+                analysisStatusLabel->setStyleSheet(
+    "color: #dc2626;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "background-color: #fef2f2;"
+    "padding: 10px;"
+    "border-radius: 6px;"
+);
             }
         }
     );
@@ -1674,6 +2668,14 @@ reportPath = QDir::cleanPath(reportPath);
                 "Analysis Status: PROCESS ERROR.\n" +
                 analysisProcess->errorString()
             );
+        analysisStatusLabel->setStyleSheet(
+    "color: #dc2626;"
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "background-color: #fef2f2;"
+    "padding: 10px;"
+    "border-radius: 6px;"
+);
         }
     );
 

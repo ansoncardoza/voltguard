@@ -12,14 +12,12 @@
         "all_requests_valid": false
     },
     "physics_analysis": {
-        "transaction_id": 1002,
-        "source": "VoltGuard Abnormal Test Simulator",
+        "transaction_id": 1001,
+        "source": "VoltGuard Synthetic Simulator",
         "environment": "LOCAL_TEST",
         "validation_result": {
-            "valid": false,
-            "violations": [
-                "PUMP OFF BUT FLOW EXCEEDS EXPECTED RANGE"
-            ],
+            "valid": true,
+            "violations": [],
             "warnings": []
         }
     },

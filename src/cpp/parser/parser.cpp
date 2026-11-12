@@ -198,6 +198,28 @@ void printPacket(const ModbusPacket& packet)
 }
 
 // Escape special characters before writing JSON strings.
+
+// Convert the original frame bytes into a readable hexadecimal string.
+std::string frameToHex(const Frame& frame)
+{
+    std::ostringstream hex;
+
+    hex << std::uppercase
+        << std::hex
+        << std::setfill('0');
+
+    for (std::size_t i = 0; i < frame.size(); ++i)
+    {
+        if (i > 0)
+            hex << ' ';
+
+        hex << std::setw(2)
+            << static_cast<unsigned int>(frame[i]);
+    }
+
+    return hex.str();
+}
+
 std::string jsonEscape(const std::string& value)
 {
     std::ostringstream escaped;
@@ -332,7 +354,9 @@ int main()
                    << "      \"function_valid\": "
                    << (functionValid ? "true" : "false") << ",\n"
                    << "      \"reason\": \""
-                   << jsonEscape(error) << "\"";
+                   << jsonEscape(error) << "\",\n"
+                   << "      \"raw_hex\": \""
+                   << frameToHex(frame) << "\"";
 
         if (parsed)
         {
