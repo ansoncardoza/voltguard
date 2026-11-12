@@ -57,6 +57,16 @@ def test_normal_operating_condition():
             },
             "TANK LEVEL OUTSIDE PHYSICAL RANGE",
         ),
+                (
+            {
+                "tank_level_percent": 60,
+                "pump_on": True,
+                "valve_opening_percent": 80,
+                "flow_rate_lpm": 40,
+                "valve_pressure_kpa": -10,
+            },
+            "VALVE PRESSURE OUTSIDE CONFIGURED RANGE",
+        ),
     ],
 )
 def test_abnormal_operating_conditions(inputs, expected_violation):

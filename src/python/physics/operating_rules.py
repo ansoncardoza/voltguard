@@ -14,6 +14,7 @@ def validate_operating_conditions(
     pump_on: bool,
     valve_opening_percent: float,
     flow_rate_lpm: float,
+    valve_pressure_kpa: float = 0.0,
 ) -> dict:
     """Validate a simulated industrial operating condition."""
 
@@ -31,6 +32,12 @@ def validate_operating_conditions(
     # 2. Valve position validation
     if not 0 <= valve_opening_percent <= 100:
         violations.append("INVALID VALVE OPENING PERCENTAGE")
+
+    # 2.1 Valve pressure validation
+    if not 0 <= valve_pressure_kpa <= 100:
+        violations.append(
+            "VALVE PRESSURE OUTSIDE CONFIGURED RANGE"
+        )
 
     # 3. Flow rate validation
     if not 0 <= flow_rate_lpm <= 60:
@@ -79,6 +86,14 @@ if __name__ == "__main__":
             "pump_on": True,
             "valve_opening_percent": 120,
             "flow_rate_lpm": 40,
+        },
+        {
+            "name": "Negative Valve Pressure",
+            "tank_level_percent": 60,
+            "pump_on": True,
+            "valve_opening_percent": 80,
+            "flow_rate_lpm": 40,
+            "valve_pressure_kpa": -10,
         },
         {
             "name": "Excessive Flow Rate",
