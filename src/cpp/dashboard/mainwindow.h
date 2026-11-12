@@ -1,4 +1,3 @@
-
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
@@ -13,6 +12,7 @@ class QLabel;
 class QComboBox;
 class QProgressBar;
 class QTimer;
+class QTableWidget;
 class LiveTankChart;
 
 class MainWindow : public QMainWindow
@@ -29,11 +29,11 @@ private:
     // Existing offline analysis process
     QProcess *analysisProcess;
 
-// New live simulation process
-QProcess *liveSimulationProcess;
-QTimer *liveDataWatchdog;
-QByteArray liveOutputBuffer;
-QDateTime lastLiveSampleAt;
+    // New live simulation process
+    QProcess *liveSimulationProcess;
+    QTimer *liveDataWatchdog;
+    QByteArray liveOutputBuffer;
+    QDateTime lastLiveSampleAt;
 
     // Existing navigation buttons
     QPushButton *overviewButton;
@@ -61,6 +61,15 @@ QDateTime lastLiveSampleAt;
     // Tank visualization
     QProgressBar *tankLevelProgress;
     LiveTankChart *tankLevelChart;
+    // Network Traffic live monitoring
+    QLabel *trafficSummary;
+    QTableWidget *trafficTable;
+    QLabel *frameDetails;
+
+    int liveTotalFrames = 0;
+    int liveValidCount = 0;
+    int liveValidationFailureCount = 0;
+    int liveInvalidFrameCount = 0;
 
     // Existing dashboard methods
     void createPages();

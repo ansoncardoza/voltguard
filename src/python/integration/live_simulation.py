@@ -44,6 +44,110 @@ SCENARIOS = {
 }
 
 
+def create_modbus_event(sequence):
+    """Generate rotating synthetic Modbus/TCP validation events."""
+
+    transaction_id = sequence % 65536
+    frame_number = sequence + 1
+    unit_id = 1
+
+    # Six-frame demonstration pattern.
+    pattern = [
+        {
+            "function_code": 0x03,
+            "start_address": 0,
+            "quantity": 6,
+            "status": "VALID",
+            "reason": "VALID READ HOLDING REGISTERS REQUEST",
+        },
+        {
+            "function_code": 0x03,
+            "start_address": 0,
+            "quantity": 0,
+            "status": "VALIDATION_FAILED",
+            "reason": "INVALID REGISTER QUANTITY (allowed: 1-125)",
+        },
+        {
+            "function_code": 0x45,
+            "start_address": 0,
+            "quantity": 6,
+            "status": "VALIDATION_FAILED",
+            "reason": "UNSUPPORTED FUNCTION CODE",
+        },
+        {
+            "function_code": 0x03,
+            "start_address": 0,
+            "quantity": 126,
+            "status": "VALIDATION_FAILED",
+            "reason": "INVALID REGISTER QUANTITY (allowed: 1-125)",
+        },
+        {
+            "function_code": 0x03,
+            "start_address": 0,
+            "quantity": 6,
+            "status": "INVALID_FRAME",
+            "reason": "MBAP length does not match frame size.",
+        },
+        {
+            "function_code": 0x06,
+            "start_address": 100,
+            "quantity": 1,
+            "status": "VALID",
+            "reason": "VALID WRITE SINGLE REGISTER REQUEST",
+        },
+    ]
+
+    test = pattern[sequence % len(pattern)]
+
+    function_code = test["function_code"]
+    start_address = test["start_address"]
+    quantity = test["quantity"]
+
+    data = (
+        start_address.to_bytes(2, "big")
+        + quantity.to_bytes(2, "big")
+    )
+
+    # Build the MBAP header.
+    declared_length = 6
+
+    if test["status"] == "INVALID_FRAME":
+        declared_length = 7
+
+    raw_frame = (
+        transaction_id.to_bytes(2, "big")
+        + (0).to_bytes(2, "big")
+        + declared_length.to_bytes(2, "big")
+        + bytes([unit_id, function_code])
+        + data
+    )
+
+    event = {
+        "frame_number": frame_number,
+        "transaction_id": transaction_id,
+        "protocol_id": 0,
+        "length": declared_length,
+        "unit_id": unit_id,
+        "function_code": function_code,
+        "status": test["status"],
+        "parsed": test["status"] != "INVALID_FRAME",
+        "function_valid": test["status"] == "VALID",
+        "reason": test["reason"],
+        "raw_hex": raw_frame.hex().upper(),
+        "data_source": "SIMULATION",
+        "data_status": "LIVE",
+    }
+
+    if function_code == 0x03:
+        event["start_address"] = start_address
+        event["quantity"] = quantity
+
+    elif function_code == 0x06:
+        event["register_address"] = start_address
+        event["register_value"] = quantity
+
+    return event
+
 def create_sample(
     sequence,
     simulation_time,
@@ -54,6 +158,7 @@ def create_sample(
     """Build one timestamped live simulation sample."""
 
     scenario = SCENARIOS[scenario_name]
+    modbus_event = create_modbus_event(sequence)
 
     tank_level = (tank_volume / capacity) * 100.0
 
@@ -92,6 +197,7 @@ def create_sample(
             "flow_rate_lpm": scenario["inflow_lpm"],
         },
         "validation": validation,
+        "modbus": modbus_event,
     }
 
 

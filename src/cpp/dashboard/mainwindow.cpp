@@ -61,8 +61,11 @@ MainWindow::MainWindow(QWidget *parent)
       outletFlowValueLabel(nullptr),
       validationValueLabel(nullptr),
       tankLevelProgress(nullptr),
-      tankLevelChart(nullptr)
-{
+      tankLevelChart(nullptr),
+      trafficSummary(nullptr),
+      trafficTable(nullptr),
+      frameDetails(nullptr)
+   {
     setWindowTitle("VoltGuard - ICS/SCADA Security Dashboard");
     resize(1100, 700);
 
@@ -687,7 +690,7 @@ connect(
         "background-color: transparent;"
     );
 
-    QLabel *trafficSummary = new QLabel(
+    trafficSummary = new QLabel(
         "Loading traffic statistics..."
     );
 
@@ -698,7 +701,7 @@ connect(
         "background-color: transparent;"
     );
 
-    QTableWidget *trafficTable = new QTableWidget();
+    trafficTable = new QTableWidget();
 
     trafficTable->setColumnCount(5);
 
@@ -743,7 +746,6 @@ connect(
     "font-size: 13px;"
     "}"
     "QTableWidget::item {"
-    "color: #f1f5f9;"
     "padding: 6px;"
     "}"
     "QTableWidget::item:selected {"
@@ -768,7 +770,7 @@ connect(
         "background-color: transparent;"
     );
 
-    QLabel *frameDetails = new QLabel(
+    frameDetails = new QLabel(
         "Select a traffic frame to inspect its parsed information."
     );
 
@@ -948,7 +950,7 @@ for (int column = 0; column < trafficTable->columnCount(); ++column)
         trafficTable,
         &QTableWidget::cellClicked,
         this,
-        [trafficTable, frameDetails](int row, int column)
+        [this](int row, int column)
         {
             Q_UNUSED(column);
 
@@ -1041,7 +1043,6 @@ for (int column = 0; column < trafficTable->columnCount(); ++column)
     );
 
     stackedWidget->addWidget(networkPage);
-
 
 // =========================================
 // PAGE 3: PROTOCOL ANALYSIS
@@ -3124,6 +3125,125 @@ void MainWindow::processLiveSample(const QByteArray &jsonLine)
 
     // Add the latest level to the live chart.
     tankLevelChart->addDataPoint(level);
+        // Add the synthetic Modbus event to Network Traffic.
+    QJsonObject modbusEvent =
+        root.value("modbus").toObject();
+
+    if (root.value("modbus").isObject() &&
+        modbusEvent.value("data_source").toString() == "SIMULATION" &&
+        modbusEvent.value("data_status").toString() == "LIVE" &&
+        trafficTable != nullptr)
+    {
+        int row = trafficTable->rowCount();
+        trafficTable->insertRow(row);
+
+        int frameNumber =
+            modbusEvent.value("frame_number").toInt();
+
+        int transactionId =
+            modbusEvent.value("transaction_id").toInt();
+
+        int functionCode =
+            modbusEvent.value("function_code").toInt();
+
+        QString functionCodeText =
+            QString("0x%1")
+                .arg(functionCode, 2, 16, QChar('0'))
+                .toUpper();
+
+        trafficTable->setItem(
+            row, 0,
+            new QTableWidgetItem(
+                QString("LIVE #%1").arg(frameNumber)
+            )
+        );
+
+        trafficTable->setItem(
+            row, 1,
+            new QTableWidgetItem(
+                QString::number(transactionId)
+            )
+        );
+
+        trafficTable->setItem(
+            row, 2,
+            new QTableWidgetItem(functionCodeText)
+        );
+
+        QTableWidgetItem *statusItem =
+            new QTableWidgetItem(
+                modbusEvent.value("status").toString()
+            );
+
+        // Preserve the event for the existing frame-details view.
+        statusItem->setData(
+            Qt::UserRole,
+            QJsonDocument(modbusEvent).toJson(
+                QJsonDocument::Compact
+            )
+        );
+
+        trafficTable->setItem(row, 3, statusItem);
+        QString status = modbusEvent.value("status").toString();
+
+if (status == "VALID")
+{
+    statusItem->setBackground(QColor("#dcfce7"));
+    statusItem->setForeground(QColor("#166534"));
+}
+else if (status == "VALIDATION_FAILED")
+{
+    statusItem->setBackground(QColor("#fef3c7"));
+    statusItem->setForeground(QColor("#92400e"));
+}
+else if (status == "INVALID_FRAME")
+{
+    statusItem->setBackground(QColor("#fee2e2"));
+    statusItem->setForeground(QColor("#991b1b"));
+}
+
+trafficTable->setItem(
+    row, 4,
+    new QTableWidgetItem(
+        modbusEvent.value("reason").toString()
+    )
+);
+        // Update live Modbus traffic counters.
+++liveTotalFrames;
+
+QString liveStatus =
+    modbusEvent.value("status").toString();
+
+if (liveStatus == "VALID")
+{
+    ++liveValidCount;
+}
+else if (liveStatus == "VALIDATION_FAILED")
+{
+    ++liveValidationFailureCount;
+}
+else if (liveStatus == "INVALID_FRAME")
+{
+    ++liveInvalidFrameCount;
+}
+
+// Display historical and live statistics separately.
+trafficSummary->setText(
+    QString(
+        "Historical Frames: %1    |    "
+        "Live Frames: %2    |    "
+        "Live Valid: %3    |    "
+        "Live Validation Failures: %4    |    "
+        "Live Invalid Frames: %5"
+    )
+    .arg(trafficTable->rowCount() - liveTotalFrames)
+    .arg(liveTotalFrames)
+    .arg(liveValidCount)
+    .arg(liveValidationFailureCount)
+    .arg(liveInvalidFrameCount)
+    );
+        trafficTable->scrollToBottom();
+    }
 
     // Update scenario and connection information.
     liveScenarioLabel->setText(
