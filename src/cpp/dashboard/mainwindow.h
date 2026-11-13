@@ -14,6 +14,7 @@ class QProgressBar;
 class QTimer;
 class QTableWidget;
 class LiveTankChart;
+class LiveTrafficChart;
 
 class MainWindow : public QMainWindow
 {
@@ -76,6 +77,10 @@ private:
 
     QLabel *physicsSnapshotInfo;
     QLabel *physicsValidationSummary;
+    // Live Physics Validation
+    QLabel *livePhysicsValidationSummary;
+    QLabel *livePhysicsViolationLabel;
+    QLabel *livePhysicsWarningLabel;
     QLabel *physicsViolationLabel;
     QLabel *physicsWarningLabel;
     
@@ -83,11 +88,25 @@ private:
     QLabel *trafficSummary;
     QTableWidget *trafficTable;
     QLabel *frameDetails;
+    LiveTrafficChart *trafficChart;
 
     int liveTotalFrames = 0;
     int liveValidCount = 0;
     int liveValidationFailureCount = 0;
     int liveInvalidFrameCount = 0;
+
+    // Per-scenario traffic history counters
+    int normalLiveValidCount = 0;
+    int normalLiveValidationFailureCount = 0;
+    int normalLiveInvalidCount = 0;
+
+    int pumpOffLiveValidCount = 0;
+    int pumpOffLiveValidationFailureCount = 0;
+    int pumpOffLiveInvalidCount = 0;
+
+    int invalidTrafficValidCount = 0;
+    int invalidTrafficValidationFailureCount = 0;
+    int invalidTrafficInvalidCount = 0;
  
     // Protocol Analysis live monitoring
     QLabel *liveProtocolSummary;

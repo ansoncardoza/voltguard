@@ -1,5 +1,6 @@
 ﻿#include "mainwindow.h"
 #include "livetankchart.h"
+#include "livetrafficchart.h"
 
 #include <QProgressBar>
 #include <QProcess>
@@ -73,6 +74,9 @@ MainWindow::MainWindow(QWidget *parent)
       physicsValidationSummary(nullptr),
       physicsViolationLabel(nullptr),
       physicsWarningLabel(nullptr),
+      livePhysicsValidationSummary(nullptr),
+      livePhysicsViolationLabel(nullptr),
+      livePhysicsWarningLabel(nullptr),
       trafficSummary(nullptr),
       trafficTable(nullptr),
       frameDetails(nullptr),
@@ -587,7 +591,7 @@ connect(
             "Pump Status",
             "OFF",
             "Current simulated pump state",
-            "#64748b",
+            "#dc2626",
             &pumpStatusValueLabel
         ),
         0, 2
@@ -617,12 +621,12 @@ connect(
 
     metricsGrid->addWidget(
         createLiveCard(
-            "Physics Validation",
-            "WAITING",
-            "Operating-condition validation",
-            "#64748b",
-            &validationValueLabel
-        ),
+        "Physics Validation",
+        "NOT RUN",
+        "Operating-condition validation",
+        "#dc2626",
+    &validationValueLabel
+),
         1, 2
     );
 
@@ -758,6 +762,9 @@ connect(
         "background-color: transparent;"
     );
 
+    // Live Modbus Traffic History Chart
+    trafficChart = new LiveTrafficChart(networkPage);
+
     trafficTable = new QTableWidget();
 
     trafficTable->setColumnCount(5);
@@ -842,6 +849,7 @@ connect(
     networkLayout->addWidget(networkTitle);
     networkLayout->addWidget(networkSubtitle);
     networkLayout->addWidget(trafficSummary);
+    networkLayout->addWidget(trafficChart);
     networkLayout->addWidget(trafficTable, 1);
     networkLayout->addWidget(frameDetailsTitle);
     networkLayout->addWidget(frameDetails);
@@ -1797,6 +1805,63 @@ warningLabel->setStyleSheet(
     "font-size: 12px;"
 );
 
+// Live Simulation Validation Results
+
+QLabel *liveValidationTitle = new QLabel(
+    "Live Simulation Validation"
+);
+
+liveValidationTitle->setStyleSheet(
+    "font-size: 17px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+);
+
+livePhysicsValidationSummary = new QLabel(
+    "Live Validation: SIMULATION STOPPED"
+);
+
+livePhysicsViolationLabel = new QLabel(
+    "Live Violations: N/A"
+);
+
+livePhysicsWarningLabel = new QLabel(
+    "Live Warnings: N/A"
+);
+
+livePhysicsValidationSummary->setWordWrap(true);
+livePhysicsViolationLabel->setWordWrap(true);
+livePhysicsWarningLabel->setWordWrap(true);
+
+livePhysicsValidationSummary->setStyleSheet(
+    "background-color: #f8fafc;"
+    "padding: 4px 8px;"
+    "border: 1px solid #e2e8f0;"
+    "border-radius: 5px;"
+    "color: #334155;"
+    "font-size: 12px;"
+    "font-weight: bold;"
+);
+
+livePhysicsViolationLabel->setStyleSheet(
+    "background-color: #fffafa;"
+    "padding: 4px 8px;"
+    "border: 1px solid #fecaca;"
+    "border-radius: 5px;"
+    "color: #dc2626;"
+    "font-size: 12px;"
+);
+
+livePhysicsWarningLabel->setStyleSheet(
+    "background-color: #fffbeb;"
+    "padding: 4px 8px;"
+    "border: 1px solid #fde68a;"
+    "border-radius: 5px;"
+    "color: #b45309;"
+    "font-size: 12px;"
+);
+
     // Dynamic Scenario Loading
 
     auto updatePhysicsScenario = [
@@ -2122,6 +2187,11 @@ validationLayout->addWidget(validationTitle);
 validationLayout->addWidget(validationSummary);
 validationLayout->addWidget(violationLabel);
 validationLayout->addWidget(warningLabel);
+validationLayout->addSpacing(12);
+validationLayout->addWidget(liveValidationTitle);
+validationLayout->addWidget(livePhysicsValidationSummary);
+validationLayout->addWidget(livePhysicsViolationLabel);
+validationLayout->addWidget(livePhysicsWarningLabel);
 
 physicsLayout->addLayout(validationLayout);
 validationLayout->setAlignment(Qt::AlignTop);
@@ -3788,10 +3858,16 @@ if (liveDecisionProcess != nullptr &&
         QString("%1%").arg(level, 0, 'f', 2)
     );
 
-    // Update pump state.
-    pumpStatusValueLabel->setText(
-        pumpOn ? "ON" : "OFF"
-    );
+    // Update pump state and colour.
+pumpStatusValueLabel->setText(
+    pumpOn ? "ON" : "OFF"
+);
+
+pumpStatusValueLabel->setStyleSheet(
+    pumpOn
+        ? "color: #16a34a; font-size: 21px; font-weight: bold; border: none; background: transparent;"
+        : "color: #dc2626; font-size: 21px; font-weight: bold; border: none; background: transparent;"
+);
 
     // Update actual inlet and outlet flow.
     inletFlowValueLabel->setText(
@@ -3826,10 +3902,20 @@ if (liveDecisionProcess != nullptr &&
         validationText = "VALID";
     }
 
-    validationValueLabel->setText(validationText);
+    // Update physics validation status and colour.
+validationValueLabel->setText(validationText);
+
+validationValueLabel->setStyleSheet(
+    validationText == "VALID"
+        ? "color: #16a34a; font-size: 21px; font-weight: bold; border: none; background: transparent;"
+        : "color: #dc2626; font-size: 21px; font-weight: bold; border: none; background: transparent;"
+);
 
     // Add the latest level to the live chart.
-    tankLevelChart->addDataPoint(level);
+    QString scenario =
+    root.value("scenario").toString();
+
+    tankLevelChart->addDataPoint(scenario, level);
     // =========================================
     // UPDATE PHYSICS MONITORING - LIVE DATA
     // =========================================
@@ -3904,282 +3990,352 @@ if (physicsSnapshotInfo != nullptr)
     );
 }
 
-// Update Physics Monitoring validation.
-if (physicsValidationSummary != nullptr)
+// Update LIVE Physics Monitoring validation.
+if (livePhysicsValidationSummary != nullptr)
 {
-    physicsValidationSummary->setText(
-        "Physics Validation: " + validationText
+    livePhysicsValidationSummary->setText(
+        "Live Physics Validation: " + validationText
     );
 }
 
 QStringList violationMessages;
+
 for (const QJsonValue &item : violations)
 {
     violationMessages.append(item.toString());
 }
 
 QStringList warningMessages;
+
 for (const QJsonValue &item : warnings)
 {
     warningMessages.append(item.toString());
 }
 
-if (physicsViolationLabel != nullptr)
+if (livePhysicsViolationLabel != nullptr)
 {
-    physicsViolationLabel->setText(
+    livePhysicsViolationLabel->setText(
         violationMessages.isEmpty()
-            ? "Violations: None"
-            : "Violations:\n- " + violationMessages.join("\n- ")
+            ? "Live Violations: None"
+            : "Live Violations:\n- " + violationMessages.join("\n- ")
     );
 }
 
-if (physicsWarningLabel != nullptr)
+if (livePhysicsWarningLabel != nullptr)
 {
-    physicsWarningLabel->setText(
+    livePhysicsWarningLabel->setText(
         warningMessages.isEmpty()
-            ? "Warnings: None"
-            : "Warnings:\n- " + warningMessages.join("\n- ")
+            ? "Live Warnings: None"
+            : "Live Warnings:\n- " + warningMessages.join("\n- ")
     );
 }
-        // Add the synthetic Modbus event to Network Traffic.
+
+    // Read the synthetic Modbus event.
     QJsonObject modbusEvent =
         root.value("modbus").toObject();
 
+    // Process live Modbus data independently of the Network Traffic table.
     if (root.value("modbus").isObject() &&
         modbusEvent.value("data_source").toString() == "SIMULATION" &&
-        modbusEvent.value("data_status").toString() == "LIVE" &&
-        trafficTable != nullptr)
+        modbusEvent.value("data_status").toString() == "LIVE")
     {
-        int row = trafficTable->rowCount();
-        trafficTable->insertRow(row);
+        // Update live Modbus traffic counters.
+        ++liveTotalFrames;
 
-        int frameNumber =
-            modbusEvent.value("frame_number").toInt();
+        QString liveStatus =
+            modbusEvent.value("status").toString();
 
-        int transactionId =
-            modbusEvent.value("transaction_id").toInt();
+        if (liveStatus == "VALID")
+        {
+            ++liveValidCount;
+        }
+        else if (liveStatus == "VALIDATION_FAILED")
+        {
+            ++liveValidationFailureCount;
+        }
+        else if (liveStatus == "INVALID_FRAME")
+        {
+            ++liveInvalidFrameCount;
+        }
 
-        int functionCode =
-            modbusEvent.value("function_code").toInt();
+        // Update scenario-specific traffic history.
+QString scenario = root.value("scenario").toString();
 
-        QString functionCodeText =
-            QString("0x%1")
-                .arg(functionCode, 2, 16, QChar('0'))
-                .toUpper();
+if (scenario == "normal_filling")
+{
+    if (liveStatus == "VALID")
+        ++normalLiveValidCount;
+    else if (liveStatus == "VALIDATION_FAILED")
+        ++normalLiveValidationFailureCount;
+    else if (liveStatus == "INVALID_FRAME")
+        ++normalLiveInvalidCount;
 
-        trafficTable->setItem(
-            row, 0,
-            new QTableWidgetItem(
-                QString("LIVE #%1").arg(frameNumber)
-            )
+    if (trafficChart != nullptr)
+    {
+        trafficChart->addDataPoint(
+            scenario,
+            normalLiveValidCount,
+            normalLiveValidationFailureCount,
+            normalLiveInvalidCount
         );
+    }
+}
+else if (scenario == "pump_off_consumption")
+{
+    if (liveStatus == "VALID")
+        ++pumpOffLiveValidCount;
+    else if (liveStatus == "VALIDATION_FAILED")
+        ++pumpOffLiveValidationFailureCount;
+    else if (liveStatus == "INVALID_FRAME")
+        ++pumpOffLiveInvalidCount;
 
-        trafficTable->setItem(
-            row, 1,
-            new QTableWidgetItem(
-                QString::number(transactionId)
-            )
+    if (trafficChart != nullptr)
+    {
+        trafficChart->addDataPoint(
+            scenario,
+            pumpOffLiveValidCount,
+            pumpOffLiveValidationFailureCount,
+            pumpOffLiveInvalidCount
         );
+    }
+}
+else if (scenario == "invalid_traffic")
+{
+    if (liveStatus == "VALID")
+        ++invalidTrafficValidCount;
+    else if (liveStatus == "VALIDATION_FAILED")
+        ++invalidTrafficValidationFailureCount;
+    else if (liveStatus == "INVALID_FRAME")
+        ++invalidTrafficInvalidCount;
 
-        trafficTable->setItem(
-            row, 2,
-            new QTableWidgetItem(functionCodeText)
+    if (trafficChart != nullptr)
+    {
+        trafficChart->addDataPoint(
+            scenario,
+            invalidTrafficValidCount,
+            invalidTrafficValidationFailureCount,
+            invalidTrafficInvalidCount
         );
+    }
+}
 
-        QTableWidgetItem *statusItem =
-            new QTableWidgetItem(
-                modbusEvent.value("status").toString()
+        // Update live Protocol Analysis counters.
+        ++liveProtocolTotalFrames;
+
+        int protocolFunctionCode =
+            modbusEvent.value("function_code").toInt(-1);
+
+        if (protocolFunctionCode == 3)
+        {
+            ++liveProtocolFC03Count;
+        }
+        else if (protocolFunctionCode == 6)
+        {
+            ++liveProtocolFC06Count;
+        }
+
+        QString protocolReason =
+            modbusEvent.value("reason").toString();
+
+        if (protocolReason == "UNSUPPORTED FUNCTION CODE")
+        {
+            ++liveProtocolUnsupportedCount;
+        }
+
+        if (protocolReason.contains("INVALID REGISTER QUANTITY"))
+        {
+            ++liveProtocolInvalidQuantityCount;
+        }
+        else if (protocolReason.contains("INVALID DATA LENGTH"))
+        {
+            ++liveProtocolInvalidLengthCount;
+        }
+        else if (protocolReason == "INVALID UNIT ID")
+        {
+            ++liveProtocolInvalidUnitCount;
+        }
+        else if (protocolReason.contains("REGISTER RANGE"))
+        {
+            ++liveProtocolRegisterRangeCount;
+        }
+        else if (protocolReason.contains("MBAP"))
+        {
+            ++liveProtocolInvalidMbapCount;
+        }
+
+        if (liveStatus == "VALID")
+        {
+            ++liveProtocolValidCount;
+        }
+        else if (liveStatus == "VALIDATION_FAILED")
+        {
+            ++liveProtocolValidationFailureCount;
+        }
+        else if (liveStatus == "INVALID_FRAME")
+        {
+            ++liveProtocolInvalidFrameCount;
+        }
+
+        // Refresh Live Security Activity panel.
+        if (liveSecuritySummary != nullptr)
+        {
+            liveSecuritySummary->setText(
+                QString(
+                    "LIVE SECURITY ACTIVITY\n\n"
+                    "Live Frames: %1\n"
+                    "Valid Requests: %2\n"
+                    "Validation Failures: %3\n"
+                    "Invalid Frames: %4"
+                )
+                .arg(liveTotalFrames)
+                .arg(liveValidCount)
+                .arg(liveValidationFailureCount)
+                .arg(liveInvalidFrameCount)
+            );
+        }
+
+        // Refresh Live Protocol Analysis panel.
+        if (liveProtocolSummary != nullptr)
+        {
+            liveProtocolSummary->setText(
+                QString(
+                    "LIVE PROTOCOL ANALYSIS\n\n"
+                    "Live Frames: %1\n"
+                    "FC03 Frames: %2\n"
+                    "FC06 Frames: %3\n"
+                    "Unsupported Functions: %4\n"
+                    "Valid Frames: %5\n"
+                    "Validation Failures: %6\n"
+                    "Invalid Frames: %7"
+                )
+                .arg(liveProtocolTotalFrames)
+                .arg(liveProtocolFC03Count)
+                .arg(liveProtocolFC06Count)
+                .arg(liveProtocolUnsupportedCount)
+                .arg(liveProtocolValidCount)
+                .arg(liveProtocolValidationFailureCount)
+                .arg(liveProtocolInvalidFrameCount)
+            );
+        }
+
+        // Refresh Live Protocol Validation Findings panel.
+        if (liveProtocolFindingsSummary != nullptr)
+        {
+            liveProtocolFindingsSummary->setText(
+                QString(
+                    "LIVE VALIDATION FINDINGS\n\n"
+                    "Unsupported Function Code: %1\n"
+                    "Invalid Register Quantity: %2\n"
+                    "Invalid Data Length: %3\n"
+                    "Invalid Unit ID: %4\n"
+                    "Register Range Exceeded: %5\n"
+                    "Invalid MBAP Frame: %6"
+                )
+                .arg(liveProtocolUnsupportedCount)
+                .arg(liveProtocolInvalidQuantityCount)
+                .arg(liveProtocolInvalidLengthCount)
+                .arg(liveProtocolInvalidUnitCount)
+                .arg(liveProtocolRegisterRangeCount)
+                .arg(liveProtocolInvalidMbapCount)
+            );
+        }
+
+        // Update Network Traffic only when its widgets are available.
+        if (trafficTable != nullptr)
+        {
+            int row = trafficTable->rowCount();
+            trafficTable->insertRow(row);
+
+            int frameNumber =
+                modbusEvent.value("frame_number").toInt();
+
+            int transactionId =
+                modbusEvent.value("transaction_id").toInt();
+
+            int functionCode =
+                modbusEvent.value("function_code").toInt();
+
+            QString functionCodeText =
+                QString("0x%1")
+                    .arg(functionCode, 2, 16, QChar('0'))
+                    .toUpper();
+
+            trafficTable->setItem(
+                row, 0,
+                new QTableWidgetItem(
+                    QString("LIVE #%1").arg(frameNumber)
+                )
             );
 
-        // Preserve the event for the existing frame-details view.
-        statusItem->setData(
-            Qt::UserRole,
-            QJsonDocument(modbusEvent).toJson(
-                QJsonDocument::Compact
-            )
-        );
+            trafficTable->setItem(
+                row, 1,
+                new QTableWidgetItem(
+                    QString::number(transactionId)
+                )
+            );
 
-        trafficTable->setItem(row, 3, statusItem);
-        QString status = modbusEvent.value("status").toString();
+            trafficTable->setItem(
+                row, 2,
+                new QTableWidgetItem(functionCodeText)
+            );
 
-if (status == "VALID")
-{
-    statusItem->setBackground(QColor("#dcfce7"));
-    statusItem->setForeground(QColor("#166534"));
-}
-else if (status == "VALIDATION_FAILED")
-{
-    statusItem->setBackground(QColor("#fef3c7"));
-    statusItem->setForeground(QColor("#92400e"));
-}
-else if (status == "INVALID_FRAME")
-{
-    statusItem->setBackground(QColor("#fee2e2"));
-    statusItem->setForeground(QColor("#991b1b"));
-}
+            QTableWidgetItem *statusItem =
+                new QTableWidgetItem(liveStatus);
 
-trafficTable->setItem(
-    row, 4,
-    new QTableWidgetItem(
-        modbusEvent.value("reason").toString()
-    )
-);
-        // Update live Modbus traffic counters.
-++liveTotalFrames;
+            // Preserve the event for the existing frame-details view.
+            statusItem->setData(
+                Qt::UserRole,
+                QJsonDocument(modbusEvent).toJson(
+                    QJsonDocument::Compact
+                )
+            );
 
-QString liveStatus =
-    modbusEvent.value("status").toString();
+            trafficTable->setItem(row, 3, statusItem);
 
-if (liveStatus == "VALID")
-{
-    ++liveValidCount;
-}
-else if (liveStatus == "VALIDATION_FAILED")
-{
-    ++liveValidationFailureCount;
-}
-else if (liveStatus == "INVALID_FRAME")
-{
-    ++liveInvalidFrameCount;
-}
+            if (liveStatus == "VALID")
+            {
+                statusItem->setBackground(QColor("#dcfce7"));
+                statusItem->setForeground(QColor("#166534"));
+            }
+            else if (liveStatus == "VALIDATION_FAILED")
+            {
+                statusItem->setBackground(QColor("#fef3c7"));
+                statusItem->setForeground(QColor("#92400e"));
+            }
+            else if (liveStatus == "INVALID_FRAME")
+            {
+                statusItem->setBackground(QColor("#fee2e2"));
+                statusItem->setForeground(QColor("#991b1b"));
+            }
 
-// Update live Protocol Analysis counters.
-++liveProtocolTotalFrames;
+            trafficTable->setItem(
+                row, 4,
+                new QTableWidgetItem(
+                    modbusEvent.value("reason").toString()
+                )
+            );
 
-int protocolFunctionCode =
-    modbusEvent.value("function_code").toInt(-1);
+            // Display historical and live statistics separately.
+            if (trafficSummary != nullptr)
+            {
+                trafficSummary->setText(
+                    QString(
+                        "Historical Frames: %1    |    "
+                        "Live Frames: %2    |    "
+                        "Live Valid: %3    |    "
+                        "Live Validation Failures: %4    |    "
+                        "Live Invalid Frames: %5"
+                    )
+                    .arg(trafficTable->rowCount() - liveTotalFrames)
+                    .arg(liveTotalFrames)
+                    .arg(liveValidCount)
+                    .arg(liveValidationFailureCount)
+                    .arg(liveInvalidFrameCount)
+                );
+            }
 
-if (protocolFunctionCode == 3)
-{
-    ++liveProtocolFC03Count;
-}
-else if (protocolFunctionCode == 6)
-{
-    ++liveProtocolFC06Count;
-}
-
-QString protocolReason =
-    modbusEvent.value("reason").toString();
-
-if (protocolReason == "UNSUPPORTED FUNCTION CODE")
-{
-    ++liveProtocolUnsupportedCount;
-}
-
-if (protocolReason.contains("INVALID REGISTER QUANTITY"))
-{
-    ++liveProtocolInvalidQuantityCount;
-}
-else if (protocolReason.contains("INVALID DATA LENGTH"))
-{
-    ++liveProtocolInvalidLengthCount;
-}
-else if (protocolReason == "INVALID UNIT ID")
-{
-    ++liveProtocolInvalidUnitCount;
-}
-else if (protocolReason.contains("REGISTER RANGE"))
-{
-    ++liveProtocolRegisterRangeCount;
-}
-else if (protocolReason.contains("MBAP"))
-{
-    ++liveProtocolInvalidMbapCount;
-}
-
-if (liveStatus == "VALID")
-{
-    ++liveProtocolValidCount;
-}
-else if (liveStatus == "VALIDATION_FAILED")
-{
-    ++liveProtocolValidationFailureCount;
-}
-else if (liveStatus == "INVALID_FRAME")
-{
-    ++liveProtocolInvalidFrameCount;
-}
-
-// Refresh Live Security Activity panel.
-if (liveSecuritySummary != nullptr)
-{
-    liveSecuritySummary->setText(
-        QString(
-            "LIVE SECURITY ACTIVITY\n\n"
-            "Live Frames: %1\n"
-            "Valid Requests: %2\n"
-            "Validation Failures: %3\n"
-            "Invalid Frames: %4"
-        )
-        .arg(liveTotalFrames)
-        .arg(liveValidCount)
-        .arg(liveValidationFailureCount)
-        .arg(liveInvalidFrameCount)
-    );
-}
-
-// Refresh Live Protocol Analysis panel.
-if (liveProtocolSummary != nullptr)
-{
-    liveProtocolSummary->setText(
-        QString(
-            "LIVE PROTOCOL ANALYSIS\n\n"
-            "Live Frames: %1\n"
-            "FC03 Frames: %2\n"
-            "FC06 Frames: %3\n"
-            "Unsupported Functions: %4\n"
-            "Valid Frames: %5\n"
-            "Validation Failures: %6\n"
-            "Invalid Frames: %7"
-        )
-        .arg(liveProtocolTotalFrames)
-        .arg(liveProtocolFC03Count)
-        .arg(liveProtocolFC06Count)
-        .arg(liveProtocolUnsupportedCount)
-        .arg(liveProtocolValidCount)
-        .arg(liveProtocolValidationFailureCount)
-        .arg(liveProtocolInvalidFrameCount)
-    );
-}
-
-// Refresh Live Protocol Validation Findings panel.
-if (liveProtocolFindingsSummary != nullptr)
-{
-    liveProtocolFindingsSummary->setText(
-        QString(
-            "LIVE VALIDATION FINDINGS\n\n"
-            "Unsupported Function Code: %1\n"
-            "Invalid Register Quantity: %2\n"
-            "Invalid Data Length: %3\n"
-            "Invalid Unit ID: %4\n"
-            "Register Range Exceeded: %5\n"
-            "Invalid MBAP Frame: %6"
-        )
-        .arg(liveProtocolUnsupportedCount)
-        .arg(liveProtocolInvalidQuantityCount)
-        .arg(liveProtocolInvalidLengthCount)
-        .arg(liveProtocolInvalidUnitCount)
-        .arg(liveProtocolRegisterRangeCount)
-        .arg(liveProtocolInvalidMbapCount)
-    );
-}
-
-// Display historical and live statistics separately.
-trafficSummary->setText(
-    QString(
-        "Historical Frames: %1    |    "
-        "Live Frames: %2    |    "
-        "Live Valid: %3    |    "
-        "Live Validation Failures: %4    |    "
-        "Live Invalid Frames: %5"
-    )
-    .arg(trafficTable->rowCount() - liveTotalFrames)
-    .arg(liveTotalFrames)
-    .arg(liveValidCount)
-    .arg(liveValidationFailureCount)
-    .arg(liveInvalidFrameCount)
-    );
-        trafficTable->scrollToBottom();
+            trafficTable->scrollToBottom();
+        }
     }
 
     // Update scenario and connection information.
@@ -4240,7 +4396,6 @@ void MainWindow::startLiveSimulation()
 
     // Reset the previous live session.
     liveOutputBuffer.clear();
-    tankLevelChart->clearData();
 
     liveConnectionLabel->setText("● LIVE SIMULATION");
     liveConnectionLabel->setStyleSheet(
@@ -4387,9 +4542,13 @@ void MainWindow::stopLiveSimulation()
     }
 
     // Reset System Overview pump status.
-    if (pumpStatusValueLabel != nullptr)
-        pumpStatusValueLabel->setText("OFF");
-
+if (pumpStatusValueLabel != nullptr)
+{
+    pumpStatusValueLabel->setText("OFF");
+    pumpStatusValueLabel->setStyleSheet(
+    "color: #dc2626; font-size: 21px; font-weight: bold; border: none; background: transparent;"
+);
+}
     // Reset Physics Monitoring pump status.
     if (physicsPumpValue != nullptr)
     {
@@ -4403,8 +4562,13 @@ void MainWindow::stopLiveSimulation()
     }
 
     // Reset validation status.
-    if (validationValueLabel != nullptr)
-        validationValueLabel->setText("NOT RUN");
+if (validationValueLabel != nullptr)
+{
+    validationValueLabel->setText("NOT RUN");
+    validationValueLabel->setStyleSheet(
+    "color: #dc2626; font-size: 21px; font-weight: bold; border: none; background: transparent;"
+);
+}
 
     // Restore simulation controls.
     if (startSimulationButton != nullptr)
