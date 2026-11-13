@@ -42,6 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
       stackedWidget(nullptr),
       analysisProcess(nullptr),
       liveSimulationProcess(nullptr),
+      liveDecisionProcess(nullptr),
       liveDataWatchdog(nullptr),
       overviewButton(nullptr),
       networkButton(nullptr),
@@ -62,11 +63,23 @@ MainWindow::MainWindow(QWidget *parent)
       validationValueLabel(nullptr),
       tankLevelProgress(nullptr),
       tankLevelChart(nullptr),
+      physicsTankValue(nullptr),
+      physicsPumpValue(nullptr),
+      physicsValveValue(nullptr),
+      physicsFlowValue(nullptr),
+      physicsTankLevelBar(nullptr),
+      physicsTankVisualizationValue(nullptr),
+      physicsSnapshotInfo(nullptr),
+      physicsValidationSummary(nullptr),
+      physicsViolationLabel(nullptr),
+      physicsWarningLabel(nullptr),
       trafficSummary(nullptr),
       trafficTable(nullptr),
       frameDetails(nullptr),
       liveProtocolSummary(nullptr),
-      liveProtocolFindingsSummary(nullptr)
+      liveProtocolFindingsSummary(nullptr),
+      liveSecuritySummary(nullptr),
+      liveDecisionSummary(nullptr)
    {
     setWindowTitle("VoltGuard - ICS/SCADA Security Dashboard");
     resize(1100, 700);
@@ -101,6 +114,14 @@ MainWindow::MainWindow(QWidget *parent)
 
     sidebarLayout->addWidget(logo);
     sidebarLayout->addSpacing(30);
+
+    // Navigation buttons
+    overviewButton = new QPushButton("System Overview");
+    networkButton = new QPushButton("Network Traffic");
+    protocolButton = new QPushButton("Protocol Analysis");
+    physicsButton = new QPushButton("Physics Monitoring");
+    alertsButton = new QPushButton("Security Alerts");
+    reportsButton = new QPushButton("Reports");
 
     // Navigation buttons
     overviewButton = new QPushButton("System Overview");
@@ -173,6 +194,32 @@ contentScrollArea->setWidget(stackedWidget);
     analysisProcess = new QProcess(this);
     // Independent live simulation process
     liveSimulationProcess = new QProcess(this);
+    // Independent live decision bridge process
+liveDecisionProcess = new QProcess(this);
+
+// Receive live decisions from the Python bridge
+connect(
+    liveDecisionProcess,
+    &QProcess::readyReadStandardOutput,
+    this,
+    &MainWindow::handleLiveDecisionOutput
+);
+
+// Monitor decision bridge errors independently
+connect(
+    liveDecisionProcess,
+    &QProcess::errorOccurred,
+    this,
+    [this](QProcess::ProcessError error)
+    {
+        Q_UNUSED(error);
+
+        liveDecisionSummary->setText(
+            "LIVE SIMULATED DECISION: BRIDGE ERROR\n\n" +
+            liveDecisionProcess->errorString()
+        );
+    }
+);
     // Receive continuous JSON Lines from Python
 connect(
     liveSimulationProcess,
@@ -324,6 +371,11 @@ void MainWindow::createPages()
     "pump_off_consumption"
     );
 
+    liveScenarioSelector->addItem(
+    "Invalid Traffic Test",
+    "invalid_traffic"
+    );
+
     liveScenarioSelector->setMinimumWidth(250);
     liveScenarioSelector->setMinimumHeight(38);
 
@@ -456,7 +508,7 @@ connect(
     {
         QFrame *card = new QFrame();
 
-        card->setMinimumHeight(105);
+        card->setMinimumHeight(80);
 
         card->setStyleSheet(
             "QFrame {"
@@ -467,6 +519,8 @@ connect(
         );
 
         QVBoxLayout *layout = new QVBoxLayout(card);
+        layout->setContentsMargins(12, 8, 12, 8);
+        layout->setSpacing(4);
         layout->setContentsMargins(12, 8, 12, 8);
         layout->setSpacing(3);
 
@@ -1385,33 +1439,52 @@ stackedWidget->addWidget(protocolPage);
 
     QWidget *physicsPage = new QWidget(stackedWidget);
     QVBoxLayout *physicsLayout = new QVBoxLayout(physicsPage);
+    physicsLayout->setSpacing(4);
+    physicsLayout->setContentsMargins(15, 5, 15, 5);
+    physicsLayout->setAlignment(Qt::AlignTop);
 
     QLabel *physicsTitle = new QLabel("Physics Monitoring");
+physicsTitle->setContentsMargins(0, 0, 0, 0);
 
-    physicsTitle->setStyleSheet(
-        "font-size: 26px;"
-        "font-weight: bold;"
-        "color: #0f172a;"
-        "background-color: transparent;"
-    );
+physicsTitle->setStyleSheet(
+    "font-size: 23px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+    "padding: 0px;"
+    "margin: 0px;"
+);
+
+physicsTitle->setSizePolicy(
+    QSizePolicy::Preferred,
+    QSizePolicy::Fixed
+);
 
     QLabel *physicsSubtitle = new QLabel(
-        "Synthetic Water Tank Process Monitoring"
-    );
+    "Synthetic Water Tank Process Monitoring"
+);
+physicsSubtitle->setContentsMargins(0, 0, 0, 0);
 
-    physicsSubtitle->setStyleSheet(
-        "color: #64748b;"
-        "font-size: 14px;"
-        "background-color: transparent;"
-    );
+physicsSubtitle->setStyleSheet(
+    "color: #64748b;"
+    "font-size: 12px;"
+    "background-color: transparent;"
+    "padding: 0px;"
+    "margin: 0px;"
+);
+
+physicsSubtitle->setSizePolicy(
+    QSizePolicy::Preferred,
+    QSizePolicy::Fixed
+);
 
 // Scenario Selector
 
-QLabel *scenarioLabel = new QLabel("Select Test Scenario:");
+QLabel *scenarioLabel = new QLabel("Historical Snapshot:");
 
 QComboBox *scenarioSelector = new QComboBox();
-scenarioSelector->addItem("Normal Scenario", "process_snapshot.json");
-scenarioSelector->addItem("Abnormal Scenario", "abnormal_process_snapshot.json");
+scenarioSelector->addItem("Normal Snapshot", "process_snapshot.json");
+scenarioSelector->addItem("Abnormal Snapshot", "abnormal_process_snapshot.json");
 scenarioSelector->setMinimumWidth(250);
 
     scenarioSelector->setStyleSheet(
@@ -1444,6 +1517,9 @@ scenarioSelector->setMinimumWidth(250);
     // Process Variable Cards
 
     QGridLayout *physicsGrid = new QGridLayout();
+    physicsGrid->setHorizontalSpacing(8);
+    physicsGrid->setVerticalSpacing(0);
+    physicsGrid->setContentsMargins(0, 0, 0, 0);
 
     auto createPhysicsCard = [](
         const QString &title,
@@ -1452,7 +1528,7 @@ scenarioSelector->setMinimumWidth(250);
     {
         QFrame *card = new QFrame();
 
-        card->setMinimumHeight(110);
+        card->setFixedHeight(70);
 
         card->setStyleSheet(
             "QFrame {"
@@ -1462,25 +1538,28 @@ scenarioSelector->setMinimumWidth(250);
             "}"
         );
 
-        QVBoxLayout *layout = new QVBoxLayout(card);
+  QVBoxLayout *layout = new QVBoxLayout(card);
+layout->setContentsMargins(12, 8, 12, 8);
+layout->setSpacing(2);
 
         QLabel *titleLabel = new QLabel(title);
         QLabel *valueLabel = new QLabel("N/A");
 
-        titleLabel->setStyleSheet(
-            "color: #64748b;"
-            "font-size: 13px;"
-            "border: none;"
-            "background-color: transparent;"
-        );
+       titleLabel->setStyleSheet(
+    "color: #64748b;"
+    "font-size: 12px;"
+    "font-weight: 600;"
+    "border: none;"
+    "background-color: transparent;"
+);
 
         valueLabel->setStyleSheet(
-            "color: " + color +
-            "; font-size: 25px;"
-            "font-weight: bold;"
-            "border: none;"
-            "background-color: transparent;"
-        );
+    "color: " + color +
+    "; font-size: 21px;"
+    "font-weight: bold;"
+    "border: none;"
+    "background-color: transparent;"
+);
 
         layout->addWidget(titleLabel);
         layout->addWidget(valueLabel);
@@ -1496,32 +1575,54 @@ scenarioSelector->setMinimumWidth(250);
     QFrame *valveCard = createPhysicsCard("Valve Opening", "#7c3aed");
     QFrame *flowCard = createPhysicsCard("Flow Rate", "#0891b2");
 
-    QLabel *tankValue = qobject_cast<QLabel *>(
-        tankCard->property("valueLabel").value<QObject *>()
-    );
+    physicsTankValue = qobject_cast<QLabel *>(
+    tankCard->property("valueLabel").value<QObject *>()
+);
 
-    QLabel *pumpValue = qobject_cast<QLabel *>(
-        pumpCard->property("valueLabel").value<QObject *>()
-    );
+    physicsPumpValue = qobject_cast<QLabel *>(
+    pumpCard->property("valueLabel").value<QObject *>()
+);
 
-    QLabel *valveValue = qobject_cast<QLabel *>(
-        valveCard->property("valueLabel").value<QObject *>()
-    );
+    physicsValveValue = qobject_cast<QLabel *>(
+    valveCard->property("valueLabel").value<QObject *>()
+);
 
-    QLabel *flowValue = qobject_cast<QLabel *>(
-        flowCard->property("valueLabel").value<QObject *>()
-    );
+    physicsFlowValue = qobject_cast<QLabel *>(
+    flowCard->property("valueLabel").value<QObject *>()
+);
 
-    physicsGrid->addWidget(tankCard, 0, 0);
-    physicsGrid->addWidget(pumpCard, 0, 1);
-    physicsGrid->addWidget(valveCard, 1, 0);
-    physicsGrid->addWidget(flowCard, 1, 1);
+// Keep local aliases for the existing snapshot loader.
+QLabel *tankValue = physicsTankValue;
+QLabel *pumpValue = physicsPumpValue;
+
+// Initial state before live simulation starts.
+pumpValue->setText("OFF");
+pumpValue->setStyleSheet(
+    "color: #dc2626;"
+    "font-size: 25px;"
+    "font-weight: bold;"
+    "background-color: transparent;"
+);
+
+QLabel *valveValue = physicsValveValue;
+QLabel *flowValue = physicsFlowValue;
+
+physicsGrid->addWidget(pumpCard, 0, 0);
+physicsGrid->addWidget(tankCard, 0, 1);
+physicsGrid->addWidget(flowCard, 1, 0);
+physicsGrid->addWidget(valveCard, 1, 1);
+
+for (int column = 0; column < 2; ++column)
+{
+    physicsGrid->setColumnStretch(column, 1);
+}
 
     // Tank Level Visualization
 
     QFrame *tankVisualizationCard = new QFrame();
 
-    tankVisualizationCard->setMinimumHeight(220);
+    tankVisualizationCard->setMinimumSize(170, 145);
+    tankVisualizationCard->setMaximumSize(210, 155);
 
     tankVisualizationCard->setStyleSheet(
         "QFrame {"
@@ -1545,8 +1646,11 @@ scenarioSelector->setMinimumWidth(250);
         "background-color: transparent;"
     );
 
+    physicsTankVisualizationValue =
+    new QLabel("Tank Level: N/A");
+
     QLabel *tankVisualizationValue =
-        new QLabel("Tank Level: N/A");
+    physicsTankVisualizationValue;
 
     tankVisualizationValue->setAlignment(Qt::AlignCenter);
 
@@ -1558,15 +1662,15 @@ scenarioSelector->setMinimumWidth(250);
         "background-color: transparent;"
     );
 
-    QProgressBar *tankLevelBar = new QProgressBar();
+    physicsTankLevelBar = new QProgressBar();
+    QProgressBar *tankLevelBar = physicsTankLevelBar;
 
     tankLevelBar->setOrientation(Qt::Vertical);
     tankLevelBar->setRange(0, 100);
     tankLevelBar->setValue(0);
     tankLevelBar->setTextVisible(true);
     tankLevelBar->setFormat("%p%");
-    tankLevelBar->setMinimumHeight(130);
-    tankLevelBar->setMaximumWidth(100);
+    tankLevelBar->setFixedSize(55, 70);
     tankLevelBar->setAlignment(Qt::AlignCenter);
 
     tankLevelBar->setStyleSheet(
@@ -1593,29 +1697,50 @@ scenarioSelector->setMinimumWidth(250);
         0,
         Qt::AlignHCenter
     );
+    // Metrics and tank visualization side by side.
+QHBoxLayout *physicsOverviewLayout = new QHBoxLayout();
+physicsOverviewLayout->setSpacing(12);
+physicsOverviewLayout->setContentsMargins(0, 0, 0, 0);
+
+physicsOverviewLayout->addLayout(physicsGrid, 3);
+
+physicsOverviewLayout->addWidget(
+    tankVisualizationCard,
+    1,
+    Qt::AlignRight | Qt::AlignTop
+);
 
     tankVisualizationLayout->addWidget(
         tankVisualizationValue
     );
 
-    physicsLayout->addWidget(tankVisualizationCard);
+// Snapshot Information / Live Data Status
 
+physicsSnapshotInfo = new QLabel(
+    "Data Source: Waiting for simulation\n"
+    "Data Status: STOPPED"
+);
 
-    // Snapshot Information
+QLabel *snapshotInfo = physicsSnapshotInfo;
 
-    QLabel *snapshotInfo = new QLabel();
-    QLabel *physicsStatusLabel = new QLabel();
+physicsSnapshotInfo->setWordWrap(true);
+physicsSnapshotInfo->setMinimumHeight(55);
+physicsSnapshotInfo->setMaximumHeight(95);
+physicsSnapshotInfo->setTextInteractionFlags(
+    Qt::TextSelectableByMouse
+);
 
-    physicsStatusLabel->setWordWrap(true);
-
-    physicsStatusLabel->setStyleSheet(
-        "background-color: white;"
-        "padding: 14px;"
-        "border: 1px solid #e2e8f0;"
-        "border-radius: 8px;"
-        "color: #334155;"
-        "font-weight: bold;"
-    );
+physicsSnapshotInfo->setStyleSheet(
+    "QLabel {"
+    "background-color: #f8fafc;"
+    "color: #334155;"
+    "border: 1px solid #cbd5e1;"
+    "border-radius: 8px;"
+    "padding: 6px 10px;"
+    "font-size: 13px;"
+    "font-weight: 600;"
+    "}"
+);
 
     // Physics Validation Results
 
@@ -1624,48 +1749,57 @@ scenarioSelector->setMinimumWidth(250);
     );
 
     validationTitle->setStyleSheet(
-        "font-size: 20px;"
+        "font-size: 17px;"
         "font-weight: bold;"
         "color: #0f172a;"
         "background-color: transparent;"
     );
 
-    QLabel *validationSummary = new QLabel();
-    QLabel *violationLabel = new QLabel();
-    QLabel *warningLabel = new QLabel();
+    physicsValidationSummary = new QLabel();
+    QLabel *validationSummary = physicsValidationSummary;
+
+    physicsViolationLabel = new QLabel();
+    QLabel *violationLabel = physicsViolationLabel;
+
+    physicsWarningLabel = new QLabel();
+    QLabel *warningLabel = physicsWarningLabel;
 
     validationSummary->setWordWrap(true);
     violationLabel->setWordWrap(true);
     warningLabel->setWordWrap(true);
 
-    validationSummary->setStyleSheet(
-        "background-color: white;"
-        "padding: 12px;"
-        "border: 1px solid #e2e8f0;"
-        "border-radius: 8px;"
-        "color: #334155;"
-        "font-weight: bold;"
-    );
+validationSummary->setStyleSheet(
+    "background-color: #f8fafc;"
+    "padding: 4px 8px;"
+    "border: 1px solid #e2e8f0;"
+    "border-radius: 5px;"
+    "color: #334155;"
+    "font-size: 12px;"
+    "font-weight: bold;"
+);
 
-    violationLabel->setStyleSheet(
-        "background-color: white;"
-        "padding: 12px;"
-        "border: 1px solid #e2e8f0;"
-        "border-radius: 8px;"
-        "color: #dc2626;"
-    );
+violationLabel->setStyleSheet(
+    "background-color: #fffafa;"
+    "padding: 4px 8px;"
+    "border: 1px solid #fecaca;"
+    "border-radius: 5px;"
+    "color: #dc2626;"
+    "font-size: 12px;"
+);
 
-    warningLabel->setStyleSheet(
-        "background-color: white;"
-        "padding: 12px;"
-        "border: 1px solid #e2e8f0;"
-        "border-radius: 8px;"
-        "color: #b45309;"
-    );
+warningLabel->setStyleSheet(
+    "background-color: #fffbeb;"
+    "padding: 4px 8px;"
+    "border: 1px solid #fde68a;"
+    "border-radius: 5px;"
+    "color: #b45309;"
+    "font-size: 12px;"
+);
 
     // Dynamic Scenario Loading
 
     auto updatePhysicsScenario = [
+    this,
         tankValue,
         pumpValue,
         valveValue,
@@ -1673,7 +1807,6 @@ scenarioSelector->setMinimumWidth(250);
         tankLevelBar,
         tankVisualizationValue,
         snapshotInfo,
-        physicsStatusLabel,
         validationSummary,
         violationLabel,
         warningLabel,
@@ -1720,7 +1853,10 @@ reportPath = QDir::cleanPath(reportPath);
         snapshotInfo->setText("Data Source: " + selectedFile +
                               "\nEnvironment: LOCAL_TEST");
 
-        physicsStatusLabel->setText("Data Status: LOADING");
+        snapshotInfo->setText(
+    "Data Source: " + selectedFile +
+    "\nData Status: LOADING"
+);
 
         validationSummary->setText(
             "Validation Status: NOT AVAILABLE\nDetected Violations: N/A"
@@ -1782,13 +1918,16 @@ reportPath = QDir::cleanPath(reportPath);
                         QString::number(level, 'f', 1) + "%"
                     );
 
-                    pumpValue->setText(pump ? "ON" : "OFF");
+// Keep the live pump indicator OFF until simulation starts.
+// Historical snapshot values must not override the live status.
+pumpValue->setText("OFF");
 
-                    pumpValue->setStyleSheet(
-                        "color: " + QString(pump ? "#16a34a" : "#dc2626") +
-                        "; font-size: 25px; font-weight: bold;"
-                        "background-color: transparent;"
-                    );
+pumpValue->setStyleSheet(
+    "color: #dc2626;"
+    "font-size: 25px;"
+    "font-weight: bold;"
+    "background-color: transparent;"
+);
 
                     valveValue->setText(
                         QString::number(valve, 'f', 1) + "%"
@@ -1808,17 +1947,19 @@ reportPath = QDir::cleanPath(reportPath);
 
         if (snapshotLoaded)
         {
-            physicsStatusLabel->setText("Data Status: SNAPSHOT LOADED");
             snapshotInfo->setText(
                 "Data Source: " + selectedFile +
                 "\nEnvironment: LOCAL_TEST" +
-                "\nTransaction ID: " + snapshotTransaction
+                "\nTransaction ID: " + snapshotTransaction +
+                "\nData Status: SNAPSHOT LOADED"
             );
         }
         else
         {
-            physicsStatusLabel->setText(
-                "Data Status: SNAPSHOT COULD NOT BE LOADED"
+            snapshotInfo->setText(
+                "Data Source: " + selectedFile +
+                "\nEnvironment: LOCAL_TEST" +
+                "\nData Status: SNAPSHOT COULD NOT BE LOADED"
             );
         }
 
@@ -1955,59 +2096,143 @@ reportPath = QDir::cleanPath(reportPath);
 
     updatePhysicsScenario();
 
-    // Page Layout
+// Page Layout
 
-    physicsLayout->addWidget(physicsTitle);
-    physicsLayout->addWidget(physicsSubtitle);
-    physicsLayout->addSpacing(10);
-    physicsLayout->addLayout(scenarioLayout);
-    physicsLayout->addSpacing(10);
-    physicsLayout->addLayout(physicsGrid);
-    physicsLayout->addWidget(snapshotInfo);
-    physicsLayout->addWidget(physicsStatusLabel);
-    physicsLayout->addWidget(validationTitle);
-    physicsLayout->addWidget(validationSummary);
-    physicsLayout->addWidget(violationLabel);
-    physicsLayout->addWidget(warningLabel);
+QVBoxLayout *physicsHeaderLayout = new QVBoxLayout();
+physicsHeaderLayout->setSpacing(0);
+physicsHeaderLayout->setContentsMargins(0, 0, 0, 0);
 
-    stackedWidget->addWidget(physicsPage);
+physicsHeaderLayout->addWidget(physicsTitle);
+physicsHeaderLayout->addWidget(physicsSubtitle);
+
+physicsLayout->addLayout(physicsHeaderLayout);
+physicsLayout->addLayout(scenarioLayout);
+physicsLayout->addLayout(physicsOverviewLayout);
+
+// Data Status
+physicsLayout->addWidget(snapshotInfo);
+
+// Physics Validation
+QVBoxLayout *validationLayout = new QVBoxLayout();
+validationLayout->setSpacing(4);
+validationLayout->setContentsMargins(0, 0, 0, 0);
+
+validationLayout->addWidget(validationTitle);
+validationLayout->addWidget(validationSummary);
+validationLayout->addWidget(violationLabel);
+validationLayout->addWidget(warningLabel);
+
+physicsLayout->addLayout(validationLayout);
+validationLayout->setAlignment(Qt::AlignTop);
+
+stackedWidget->addWidget(physicsPage);
 
     // =========================================
     // PAGE 5: SECURITY ALERTS
     // =========================================
 
-    QWidget *alertsPage = new QWidget(stackedWidget);
-    QVBoxLayout *alertsLayout = new QVBoxLayout(alertsPage);
+QWidget *alertsPage = new QWidget(stackedWidget);
 
-    QLabel *alertsTitle = new QLabel("Security Alerts");
+QVBoxLayout *alertsLayout = new QVBoxLayout(alertsPage);
+alertsLayout->setContentsMargins(20, 18, 20, 18);
+alertsLayout->setSpacing(12);
 
-    alertsTitle->setStyleSheet(
-        "font-size: 26px;"
-        "font-weight: bold;"
-        "color: #0f172a;"
-        "background-color: transparent;"
-    );
+QLabel *alertsTitle = new QLabel("Security Alerts Dashboard");
+
+alertsTitle->setStyleSheet(
+    "font-size: 24px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+    "padding: 0px;"
+    "margin: 0px;"
+);
+
+alertsTitle->setSizePolicy(
+    QSizePolicy::Preferred,
+    QSizePolicy::Fixed
+);
+QLabel *alertsSubtitle = new QLabel(
+    "Security monitoring and simulated threat detection"
+);
+
+alertsSubtitle->setStyleSheet(
+    "font-size: 12px;"
+    "color: #64748b;"
+    "background-color: transparent;"
+    "padding: 0px;"
+    "margin: 0px;"
+);
+
+alertsSubtitle->setSizePolicy(
+    QSizePolicy::Preferred,
+    QSizePolicy::Fixed
+);
 
     QLabel *scenarioInfo = new QLabel();
     QLabel *protocolSummary = new QLabel();
     QLabel *protocolDetails = new QLabel();
     QLabel *physicsSummary = new QLabel();
     QLabel *decisionSummary = new QLabel();
+    liveSecuritySummary = new QLabel(
+    "LIVE SECURITY ACTIVITY\n\n"
+    "Live Frames: 0\n"
+    "Valid Requests: 0\n"
+    "Validation Failures: 0\n"
+    "Invalid Frames: 0"
+);
+
+liveSecuritySummary->setStyleSheet(
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "color: #1e293b;"
+    "background-color: #eff6ff;"
+    "border: 1px solid #bfdbfe;"
+    "border-radius: 8px;"
+    "padding: 12px;"
+);
+
+liveSecuritySummary->setWordWrap(true);
+liveDecisionSummary = new QLabel(
+    "LIVE SIMULATED DECISION\n\n"
+    "Decision: WAITING\n"
+    "Waiting for live protocol and physics evidence."
+);
+
+liveDecisionSummary->setStyleSheet(
+    "font-size: 14px;"
+    "font-weight: bold;"
+    "color: #1e293b;"
+    "background-color: #f0fdf4;"
+    "border: 1px solid #bbf7d0;"
+    "border-radius: 8px;"
+    "padding: 12px;"
+);
+
+liveDecisionSummary->setWordWrap(true);
     QLabel *decisionDetails = new QLabel();
     QLabel *physicsDetails = new QLabel();
     QLabel *interpretationInfo = new QLabel();
 
     scenarioInfo->setStyleSheet(
-        "font-size: 16px;"
-        "font-weight: bold;"
-        "color: #334155;"
-    );
+    "font-size: 13px;"
+    "font-weight: bold;"
+    "color: #334155;"
+    "background-color: #f1f5f9;"
+    "border: 1px solid #e2e8f0;"
+    "border-radius: 6px;"
+    "padding: 9px 12px;"
+);
 
     protocolSummary->setStyleSheet(
-        "font-size: 17px;"
-        "font-weight: bold;"
-        "color: #1e293b;"
-    );
+    "font-size: 17px;"
+    "font-weight: bold;"
+    "color: #1e293b;"
+    "background-color: #f8fafc;"
+    "border: 1px solid #e2e8f0;"
+    "border-radius: 8px;"
+    "padding: 10px;"
+);
 
     physicsSummary->setStyleSheet(
         "font-size: 17px;"
@@ -2016,25 +2241,37 @@ reportPath = QDir::cleanPath(reportPath);
     );
 
     protocolDetails->setStyleSheet(
-        "font-size: 14px;"
-        "color: #334155;"
-    );
+    "font-size: 13px;"
+    "color: #334155;"
+    "background-color: #ffffff;"
+    "border: 1px solid #e2e8f0;"
+    "border-radius: 8px;"
+    "padding: 12px;"
+);
 
     physicsDetails->setStyleSheet(
         "font-size: 14px;"
         "color: #334155;"
     );
 
-    decisionSummary->setStyleSheet(
-    "font-size: 19px;"
+  decisionSummary->setStyleSheet(
+    "font-size: 20px;"
     "font-weight: bold;"
     "color: #b91c1c;"
-    );
+    "background-color: #f8fafc;"
+    "border: 1px solid #cbd5e1;"
+    "border-radius: 8px;"
+    "padding: 12px;"
+);
 
     decisionDetails->setStyleSheet(
-    "font-size: 14px;"
+    "font-size: 13px;"
     "color: #334155;"
-    );
+    "background-color: #ffffff;"
+    "border: 1px solid #e2e8f0;"
+    "border-radius: 8px;"
+    "padding: 12px;"
+);
 
     interpretationInfo->setStyleSheet(
         "font-size: 13px;"
@@ -2211,9 +2448,13 @@ else if (decision == "BLOCK")
 }
 
 decisionSummary->setStyleSheet(
-    "font-size: 19px;"
+    "font-size: 20px;"
     "font-weight: bold;"
     "color: " + decisionColor + ";"
+    "background-color: #f8fafc;"
+    "border: 1px solid #cbd5e1;"
+    "border-radius: 8px;"
+    "padding: 12px;"
 );
 
                 QString details =
@@ -2324,15 +2565,23 @@ decisionSummary->setStyleSheet(
         );
 
         physicsSummary->setStyleSheet(
-        physicsValid
-          ? "font-size: 17px; font-weight: bold; color: #15803d;"
-          : "font-size: 17px; font-weight: bold; color: #dc2626;"
-        );
+    "font-size: 17px;"
+    "font-weight: bold;"
+    "color: #1e293b;"
+    "background-color: #f8fafc;"
+    "border: 1px solid #e2e8f0;"
+    "border-radius: 8px;"
+    "padding: 10px;"
+);
 
-        physicsDetails->setText(
-            "Violations: " + QString::number(violations.size()) + "\n"
-            "Warnings: " + QString::number(warnings.size())
-        );
+        physicsDetails->setStyleSheet(
+    "font-size: 13px;"
+    "color: #334155;"
+    "background-color: #ffffff;"
+    "border: 1px solid #e2e8f0;"
+    "border-radius: 8px;"
+    "padding: 12px;"
+);
 
         if (!violations.isEmpty())
         {
@@ -2393,19 +2642,76 @@ decisionSummary->setStyleSheet(
     updateSecurityAlerts();
 
     alertsLayout->addWidget(alertsTitle);
-    alertsLayout->addWidget(scenarioInfo);
-    alertsLayout->addSpacing(8);
-    alertsLayout->addWidget(protocolSummary);
-    alertsLayout->addWidget(protocolDetails);
-    alertsLayout->addSpacing(8);
-    alertsLayout->addWidget(physicsSummary);
-    alertsLayout->addWidget(physicsDetails);
-    alertsLayout->addSpacing(8);
-    alertsLayout->addWidget(decisionSummary);
-    alertsLayout->addWidget(decisionDetails);
-    alertsLayout->addSpacing(8);
-    alertsLayout->addWidget(interpretationInfo);
-    alertsLayout->addStretch();
+alertsLayout->addWidget(alertsSubtitle);
+alertsLayout->addWidget(scenarioInfo);
+
+// Side-by-side live security and decision panels.
+QHBoxLayout *livePanelsLayout = new QHBoxLayout();
+livePanelsLayout->setSpacing(12);
+
+liveSecuritySummary->setMinimumHeight(175);
+liveDecisionSummary->setMinimumHeight(175);
+
+liveSecuritySummary->setSizePolicy(
+    QSizePolicy::Expanding,
+    QSizePolicy::Preferred
+);
+
+liveDecisionSummary->setSizePolicy(
+    QSizePolicy::Expanding,
+    QSizePolicy::Preferred
+);
+
+liveSecuritySummary->setAlignment(
+    Qt::AlignTop | Qt::AlignLeft
+);
+
+liveDecisionSummary->setAlignment(
+    Qt::AlignTop | Qt::AlignLeft
+);
+
+livePanelsLayout->addWidget(liveSecuritySummary, 1);
+livePanelsLayout->addWidget(liveDecisionSummary, 1);
+
+alertsLayout->addSpacing(6);
+alertsLayout->addLayout(livePanelsLayout);
+
+// Three-column historical security analysis layout.
+QGridLayout *historicalAnalysisLayout = new QGridLayout();
+historicalAnalysisLayout->setSpacing(12);
+historicalAnalysisLayout->setContentsMargins(0, 0, 0, 0);
+
+decisionSummary->setMinimumHeight(75);
+protocolSummary->setMinimumHeight(75);
+physicsSummary->setMinimumHeight(75);
+
+decisionDetails->setMinimumHeight(150);
+protocolDetails->setMinimumHeight(150);
+physicsDetails->setMinimumHeight(150);
+
+decisionDetails->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+protocolDetails->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+physicsDetails->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+
+historicalAnalysisLayout->addWidget(decisionSummary, 0, 0);
+historicalAnalysisLayout->addWidget(protocolSummary, 0, 1);
+historicalAnalysisLayout->addWidget(physicsSummary, 0, 2);
+
+historicalAnalysisLayout->addWidget(decisionDetails, 1, 0);
+historicalAnalysisLayout->addWidget(protocolDetails, 1, 1);
+historicalAnalysisLayout->addWidget(physicsDetails, 1, 2);
+
+historicalAnalysisLayout->setColumnStretch(0, 1);
+historicalAnalysisLayout->setColumnStretch(1, 1);
+historicalAnalysisLayout->setColumnStretch(2, 1);
+
+alertsLayout->addSpacing(6);
+alertsLayout->addLayout(historicalAnalysisLayout);
+
+alertsLayout->addSpacing(6);
+alertsLayout->addWidget(interpretationInfo);
+
+alertsLayout->addStretch();
 
     stackedWidget->addWidget(alertsPage);
 
@@ -2981,6 +3287,165 @@ void MainWindow::switchPage(int pageIndex)
         return;
 
     stackedWidget->setCurrentIndex(pageIndex);
+
+    QList<QPushButton *> buttons = {
+        overviewButton,
+        networkButton,
+        protocolButton,
+        physicsButton,
+        alertsButton,
+        reportsButton
+    };
+
+    for (int i = 0; i < buttons.size(); ++i)
+    {
+        if (buttons[i] == nullptr)
+            continue;
+
+        buttons[i]->setStyleSheet(
+            i == pageIndex
+                ? "QPushButton {"
+                  "background-color: #2563eb;"
+                  "color: white;"
+                  "border: none;"
+                  "border-radius: 8px;"
+                  "padding: 12px;"
+                  "text-align: left;"
+                  "font-weight: bold;"
+                  "}"
+                : "QPushButton {"
+                  "background-color: transparent;"
+                  "color: #ffffff;"
+                  "border: none;"
+                  "border-radius: 8px;"
+                  "padding: 12px;"
+                  "text-align: left;"
+                  "font-weight: 500;"
+                  "}"
+                  "QPushButton:hover {"
+                  "background-color: #e2e8f0;"
+                  "color: #0f172a;"
+                  "}"
+        );
+    }
+}
+
+// Handle continuous JSON Lines from the Python simulation
+void MainWindow::handleLiveDecisionOutput()
+{
+    if (liveDecisionProcess == nullptr)
+        return;
+
+    liveDecisionOutputBuffer.append(
+        liveDecisionProcess->readAllStandardOutput()
+    );
+
+    while (liveDecisionOutputBuffer.contains('\n'))
+    {
+        int newlineIndex =
+            liveDecisionOutputBuffer.indexOf('\n');
+
+        QByteArray jsonLine =
+            liveDecisionOutputBuffer.left(newlineIndex).trimmed();
+
+        liveDecisionOutputBuffer.remove(0, newlineIndex + 1);
+
+        if (jsonLine.isEmpty())
+            continue;
+
+        QJsonParseError parseError;
+
+        QJsonDocument document =
+            QJsonDocument::fromJson(jsonLine, &parseError);
+
+        if (parseError.error != QJsonParseError::NoError ||
+            !document.isObject())
+        {
+            liveDecisionSummary->setText(
+                "LIVE SIMULATED DECISION: INVALID BRIDGE RESPONSE"
+            );
+            continue;
+        }
+
+        QJsonObject root = document.object();
+
+        if (root.value("data_status").toString() == "ERROR")
+        {
+            liveDecisionSummary->setText(
+                "LIVE SIMULATED DECISION: BRIDGE ERROR\n\n" +
+                root.value("error").toString()
+            );
+            continue;
+        }
+
+        QJsonObject decision =
+            root.value("decision_analysis").toObject();
+
+        QString decisionValue =
+            decision.value("decision").toString("UNKNOWN");
+
+        QString interpretation =
+            decision.value("interpretation").toString();
+
+        QJsonObject evidence =
+            decision.value("evidence").toObject();
+
+        QString details =
+            "LIVE SIMULATED DECISION\n\n"
+            "Decision: " + decisionValue +
+            "\nFrame: " +
+            QString::number(root.value("frame_number").toInt()) +
+            "\nFrame Status: " +
+            root.value("frame_status").toString() +
+            "\nTotal Frames: " +
+            QString::number(evidence.value("total_frames").toInt()) +
+            "\nValid Requests: " +
+            QString::number(evidence.value("valid_requests").toInt()) +
+            "\nValidation Failures: " +
+            QString::number(evidence.value("validation_failures").toInt()) +
+            "\nInvalid Frames: " +
+            QString::number(evidence.value("invalid_frames").toInt()) +
+            "\n\nInterpretation:\n" + interpretation;
+
+        liveDecisionSummary->setText(details);
+
+        if (decisionValue == "ALLOW")
+        {
+            liveDecisionSummary->setStyleSheet(
+                "font-size: 14px;"
+                "font-weight: bold;"
+                "color: #166534;"
+                "background-color: #f0fdf4;"
+                "border: 1px solid #bbf7d0;"
+                "border-radius: 8px;"
+                "padding: 12px;"
+            );
+        }
+        else if (decisionValue == "HOLD")
+        {
+            liveDecisionSummary->setStyleSheet(
+                "font-size: 14px;"
+                "font-weight: bold;"
+                "color: #92400e;"
+                "background-color: #fffbeb;"
+                "border: 1px solid #fde68a;"
+                "border-radius: 8px;"
+                "padding: 12px;"
+            );
+        }
+        else if (decisionValue == "DROP")
+        {
+            liveDecisionSummary->setStyleSheet(
+                "font-size: 14px;"
+                "font-weight: bold;"
+                "color: #991b1b;"
+                "background-color: #fef2f2;"
+                "border: 1px solid #fecaca;"
+                "border-radius: 8px;"
+                "padding: 12px;"
+            );
+        }
+    }
 }
 
 // Handle continuous JSON Lines from the Python simulation
@@ -3014,6 +3479,14 @@ void MainWindow::handleLiveOutput()
     if (liveOutputBuffer.size() > 1024 * 1024)
     {
         liveOutputBuffer.clear();
+        // Update Physics Monitoring Data Status.
+        if (physicsSnapshotInfo != nullptr)
+{
+        physicsSnapshotInfo->setText(
+        "Data Source: VoltGuard Live Simulation Engine\n"
+        "Data Status: STOPPED"
+    );
+}
 
         liveConnectionLabel->setText(
             "Simulation Error: Invalid output buffer"
@@ -3045,13 +3518,12 @@ void MainWindow::processLiveSample(const QByteArray &jsonLine)
 
     QJsonObject root = document.object();
 
-    // Accept only live simulation data.
-    if (root.value("data_source").toString() != "SIMULATION" ||
-        root.value("data_status").toString() != "LIVE")
-    {
-        return;
-    }
-
+// Accept only live simulation data.
+if (root.value("data_source").toString() != "SIMULATION" ||
+    root.value("data_status").toString() != "LIVE")
+{
+    return;
+}
     QJsonObject processState =
         root.value("process_state").toObject();
 
@@ -3068,6 +3540,23 @@ void MainWindow::processLiveSample(const QByteArray &jsonLine)
         );
         return;
     }
+
+    // Forward accepted live samples to the independent decision bridge.
+if (liveDecisionProcess != nullptr &&
+    liveDecisionProcess->state() == QProcess::Running &&
+    root.value("modbus").isObject())
+{
+    QJsonObject modbusEvent =
+        root.value("modbus").toObject();
+
+    if (modbusEvent.value("data_source").toString() == "SIMULATION" &&
+        modbusEvent.value("data_status").toString() == "LIVE")
+    {
+        QByteArray decisionInput = jsonLine;
+        decisionInput.append('\n');
+        liveDecisionProcess->write(decisionInput);
+    }
+}
 
     // Read actual simulation values.
     double volume =
@@ -3157,6 +3646,117 @@ void MainWindow::processLiveSample(const QByteArray &jsonLine)
 
     // Add the latest level to the live chart.
     tankLevelChart->addDataPoint(level);
+    // =========================================
+    // UPDATE PHYSICS MONITORING - LIVE DATA
+    // =========================================
+
+double valveOpening =
+    processState.value("valve_opening_percent").toDouble(0.0);
+
+double flowRate =
+    processState.value("flow_rate_lpm").toDouble(inletFlow);
+
+// Update Physics Monitoring metric cards.
+if (physicsTankValue != nullptr)
+{
+    physicsTankValue->setText(
+        QString::number(level, 'f', 1) + "%"
+    );
+}
+
+if (physicsPumpValue != nullptr)
+{
+    physicsPumpValue->setText(pumpOn ? "ON" : "OFF");
+
+    physicsPumpValue->setStyleSheet(
+        QString(
+            "color: %1; font-size: 25px; font-weight: bold;"
+        ).arg(pumpOn ? "#16a34a" : "#dc2626")
+    );
+}
+
+if (physicsValveValue != nullptr)
+{
+    physicsValveValue->setText(
+        QString::number(valveOpening, 'f', 1) + "%"
+    );
+}
+
+if (physicsFlowValue != nullptr)
+{
+    physicsFlowValue->setText(
+        QString::number(flowRate, 'f', 1) + " L/min"
+    );
+}
+
+// Update tank visualization.
+if (physicsTankLevelBar != nullptr)
+{
+    physicsTankLevelBar->setValue(
+        qBound(0, qRound(level), 100)
+    );
+}
+
+if (physicsTankVisualizationValue != nullptr)
+{
+    physicsTankVisualizationValue->setText(
+        "Tank Level: " + QString::number(level, 'f', 1) + "%"
+    );
+}
+
+// Update Physics Monitoring data status.
+if (physicsSnapshotInfo != nullptr)
+{
+    physicsSnapshotInfo->setText(
+        QString(
+            "Data Source: VoltGuard Live Simulation Engine\n"
+            "Data Status: LIVE\n"
+            "Scenario: %1\n"
+            "Tank Volume: %2 / %3 L"
+        )
+        .arg(root.value("scenario_description").toString())
+        .arg(volume, 0, 'f', 2)
+        .arg(capacity, 0, 'f', 2)
+    );
+}
+
+// Update Physics Monitoring validation.
+if (physicsValidationSummary != nullptr)
+{
+    physicsValidationSummary->setText(
+        "Physics Validation: " + validationText
+    );
+}
+
+QStringList violationMessages;
+for (const QJsonValue &item : violations)
+{
+    violationMessages.append(item.toString());
+}
+
+QStringList warningMessages;
+for (const QJsonValue &item : warnings)
+{
+    warningMessages.append(item.toString());
+}
+
+if (physicsViolationLabel != nullptr)
+{
+    physicsViolationLabel->setText(
+        violationMessages.isEmpty()
+            ? "Violations: None"
+            : "Violations:\n- " + violationMessages.join("\n- ")
+    );
+}
+
+if (physicsWarningLabel != nullptr)
+{
+    physicsWarningLabel->setText(
+        warningMessages.isEmpty()
+            ? "Warnings: None"
+            : "Warnings:\n- " + warningMessages.join("\n- ")
+    );
+}
         // Add the synthetic Modbus event to Network Traffic.
     QJsonObject modbusEvent =
         root.value("modbus").toObject();
@@ -3316,6 +3916,24 @@ else if (liveStatus == "INVALID_FRAME")
     ++liveProtocolInvalidFrameCount;
 }
 
+// Refresh Live Security Activity panel.
+if (liveSecuritySummary != nullptr)
+{
+    liveSecuritySummary->setText(
+        QString(
+            "LIVE SECURITY ACTIVITY\n\n"
+            "Live Frames: %1\n"
+            "Valid Requests: %2\n"
+            "Validation Failures: %3\n"
+            "Invalid Frames: %4"
+        )
+        .arg(liveTotalFrames)
+        .arg(liveValidCount)
+        .arg(liveValidationFailureCount)
+        .arg(liveInvalidFrameCount)
+    );
+}
+
 // Refresh Live Protocol Analysis panel.
 if (liveProtocolSummary != nullptr)
 {
@@ -3460,6 +4078,46 @@ void MainWindow::startLiveSimulation()
     tankLevelProgress->setValue(0);
     tankLevelProgress->setFormat("Waiting for data...");
 
+    // Start the independent live decision bridge.
+liveDecisionOutputBuffer.clear();
+
+liveDecisionSummary->setText(
+    "LIVE SIMULATED DECISION\n\n"
+    "Decision: WAITING\n"
+    "Waiting for live protocol and physics evidence."
+);
+
+liveDecisionProcess->setWorkingDirectory(projectRoot);
+
+QStringList decisionArguments;
+decisionArguments << "-m"
+                  << "src.python.integration.live_decision_bridge";
+
+if (liveDecisionProcess->state() != QProcess::NotRunning)
+{
+    liveDecisionProcess->kill();
+    liveDecisionProcess->waitForFinished(1000);
+}
+
+liveDecisionProcess->start(
+    pythonExecutable,
+    decisionArguments
+);
+
+if (liveDecisionProcess->waitForStarted(1500))
+{
+    liveDecisionProcess->write(
+        "{\"data_status\":\"SESSION_RESET\"}\n"
+    );
+}
+else
+{
+    liveDecisionSummary->setText(
+        "LIVE SIMULATED DECISION: BRIDGE UNAVAILABLE\n\n" +
+        liveDecisionProcess->errorString()
+    );
+}
+
     // Launch Python from the project root.
     liveSimulationProcess->setWorkingDirectory(projectRoot);
 
@@ -3484,12 +4142,16 @@ void MainWindow::startLiveSimulation()
         arguments
     );
 }
+
 // Stop the live Python simulation safely
+
 void MainWindow::stopLiveSimulation()
 {
+    // Stop the watchdog first.
     if (liveDataWatchdog != nullptr)
         liveDataWatchdog->stop();
 
+    // Terminate the Python simulation process.
     if (liveSimulationProcess != nullptr &&
         liveSimulationProcess->state() != QProcess::NotRunning)
     {
@@ -3502,20 +4164,72 @@ void MainWindow::stopLiveSimulation()
         }
     }
 
+        // Terminate the independent live decision bridge.
+    if (liveDecisionProcess != nullptr &&
+        liveDecisionProcess->state() != QProcess::NotRunning)
+    {
+        liveDecisionProcess->terminate();
+
+        if (!liveDecisionProcess->waitForFinished(1500))
+        {
+            liveDecisionProcess->kill();
+            liveDecisionProcess->waitForFinished(1000);
+        }
+    }
+
+    // Clear pending decision output.
+    liveDecisionOutputBuffer.clear();
+
+    // Reset the live decision panel.
+    if (liveDecisionSummary != nullptr)
+    {
+        liveDecisionSummary->setText(
+            "LIVE SIMULATED DECISION\n\n"
+            "Decision: STOPPED\n"
+            "Start a simulation to evaluate new evidence."
+        );
+    }
+
+    // Clear remaining live output.
     liveOutputBuffer.clear();
 
+    // Reset Physics Monitoring Data Status.
+    if (physicsSnapshotInfo != nullptr)
+    {
+        physicsSnapshotInfo->setText(
+            "Data Source: VoltGuard Live Simulation Engine\n"
+            "Data Status: STOPPED"
+        );
+    }
+
+    // Reset System Overview pump status.
     if (pumpStatusValueLabel != nullptr)
         pumpStatusValueLabel->setText("OFF");
 
+    // Reset Physics Monitoring pump status.
+    if (physicsPumpValue != nullptr)
+    {
+        physicsPumpValue->setText("OFF");
+        physicsPumpValue->setStyleSheet(
+            "color: #dc2626;"
+            "font-size: 25px;"
+            "font-weight: bold;"
+            "background-color: transparent;"
+        );
+    }
+
+    // Reset validation status.
     if (validationValueLabel != nullptr)
         validationValueLabel->setText("NOT RUN");
 
+    // Restore simulation controls.
     if (startSimulationButton != nullptr)
         startSimulationButton->setEnabled(true);
 
     if (stopSimulationButton != nullptr)
         stopSimulationButton->setEnabled(false);
 
+    // Update connection status.
     if (liveConnectionLabel != nullptr)
     {
         liveConnectionLabel->setText("SIMULATION STOPPED");

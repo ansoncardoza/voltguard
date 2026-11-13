@@ -35,6 +35,10 @@ private:
     QByteArray liveOutputBuffer;
     QDateTime lastLiveSampleAt;
 
+    // Live decision bridge process
+    QProcess *liveDecisionProcess;
+    QByteArray liveDecisionOutputBuffer;
+
     // Existing navigation buttons
     QPushButton *overviewButton;
     QPushButton *networkButton;
@@ -61,6 +65,20 @@ private:
     // Tank visualization
     QProgressBar *tankLevelProgress;
     LiveTankChart *tankLevelChart;
+    // Physics Monitoring live widgets
+    QLabel *physicsTankValue;
+    QLabel *physicsPumpValue;
+    QLabel *physicsValveValue;
+    QLabel *physicsFlowValue;
+
+    QProgressBar *physicsTankLevelBar;
+    QLabel *physicsTankVisualizationValue;
+
+    QLabel *physicsSnapshotInfo;
+    QLabel *physicsValidationSummary;
+    QLabel *physicsViolationLabel;
+    QLabel *physicsWarningLabel;
+    
     // Network Traffic live monitoring
     QLabel *trafficSummary;
     QTableWidget *trafficTable;
@@ -74,6 +92,8 @@ private:
     // Protocol Analysis live monitoring
     QLabel *liveProtocolSummary;
     QLabel *liveProtocolFindingsSummary;
+    QLabel *liveSecuritySummary;
+    QLabel *liveDecisionSummary;
     int liveProtocolTotalFrames = 0;
     int liveProtocolFC03Count = 0;
     int liveProtocolFC06Count = 0;
@@ -98,6 +118,7 @@ private:
     void startLiveSimulation();
     void stopLiveSimulation();
     void handleLiveOutput();
+    void handleLiveDecisionOutput();
     void processLiveSample(const QByteArray &jsonLine);
     void updateLiveConnectionStatus();
 };

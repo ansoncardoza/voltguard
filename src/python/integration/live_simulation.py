@@ -25,7 +25,6 @@ from src.python.physics.operating_rules import (
     validate_operating_conditions,
 )
 
-
 SCENARIOS = {
     "normal_filling": {
         "description": "Normal Tank Filling",
@@ -33,6 +32,7 @@ SCENARIOS = {
         "inflow_lpm": 40.0,
         "outflow_lpm": 5.0,
         "valve_opening_percent": 80.0,
+        "traffic_mode": "normal",
     },
     "pump_off_consumption": {
         "description": "Pump OFF - Normal Water Consumption",
@@ -40,79 +40,64 @@ SCENARIOS = {
         "inflow_lpm": 0.0,
         "outflow_lpm": 2.0,
         "valve_opening_percent": 80.0,
+        "traffic_mode": "normal",
+    },
+    "invalid_traffic": {
+        "description": "Invalid Modbus Traffic Test",
+        "pump_on": True,
+        "inflow_lpm": 40.0,
+        "outflow_lpm": 5.0,
+        "valve_opening_percent": 80.0,
+        "traffic_mode": "invalid",
     },
 }
 
-
-def create_modbus_event(sequence):
-    """Generate rotating synthetic Modbus/TCP validation events."""
+def create_modbus_event(sequence, traffic_mode="normal"):
+    """Generate synthetic Modbus/TCP requests for testing."""
 
     transaction_id = sequence % 65536
     frame_number = sequence + 1
     unit_id = 1
 
-    # Six-frame demonstration pattern.
-    pattern = [
-        {
-            "function_code": 0x03,
-            "start_address": 0,
-            "quantity": 6,
-            "status": "VALID",
-            "reason": "VALID READ HOLDING REGISTERS REQUEST",
-        },
-        {
-            "function_code": 0x03,
-            "start_address": 0,
-            "quantity": 0,
-            "status": "VALIDATION_FAILED",
-            "reason": "INVALID REGISTER QUANTITY (allowed: 1-125)",
-        },
-        {
-            "function_code": 0x45,
-            "start_address": 0,
-            "quantity": 6,
-            "status": "VALIDATION_FAILED",
-            "reason": "UNSUPPORTED FUNCTION CODE",
-        },
-        {
-            "function_code": 0x03,
-            "start_address": 0,
-            "quantity": 126,
-            "status": "VALIDATION_FAILED",
-            "reason": "INVALID REGISTER QUANTITY (allowed: 1-125)",
-        },
-        {
-            "function_code": 0x03,
-            "start_address": 0,
-            "quantity": 6,
-            "status": "INVALID_FRAME",
-            "reason": "MBAP length does not match frame size.",
-        },
-        {
-            "function_code": 0x06,
-            "start_address": 100,
-            "quantity": 1,
-            "status": "VALID",
-            "reason": "VALID WRITE SINGLE REGISTER REQUEST",
-        },
-    ]
+    if traffic_mode == "invalid":
+        function_code = 0x03
+        start_address = 0
+        quantity = 6
 
-    test = pattern[sequence % len(pattern)]
+        status = "INVALID_FRAME"
+        reason = "INVALID MODBUS/TCP FRAME: MBAP LENGTH MISMATCH"
 
-    function_code = test["function_code"]
-    start_address = test["start_address"]
-    quantity = test["quantity"]
+    else:
+        pattern = [
+            {
+                "function_code": 0x03,
+                "start_address": 0,
+                "quantity": 6,
+                "reason": "VALID READ HOLDING REGISTERS REQUEST",
+            },
+            {
+                "function_code": 0x06,
+                "start_address": 100,
+                "quantity": 1,
+                "reason": "VALID WRITE SINGLE REGISTER REQUEST",
+            },
+        ]
+
+        test = pattern[sequence % len(pattern)]
+
+        function_code = test["function_code"]
+        start_address = test["start_address"]
+        quantity = test["quantity"]
+
+        status = "VALID"
+        reason = test["reason"]
 
     data = (
         start_address.to_bytes(2, "big")
         + quantity.to_bytes(2, "big")
     )
 
-    # Build the MBAP header.
-    declared_length = 6
-
-    if test["status"] == "INVALID_FRAME":
-        declared_length = 7
+    declared_length = 2 if traffic_mode == "invalid" else 6
 
     raw_frame = (
         transaction_id.to_bytes(2, "big")
@@ -129,10 +114,10 @@ def create_modbus_event(sequence):
         "length": declared_length,
         "unit_id": unit_id,
         "function_code": function_code,
-        "status": test["status"],
-        "parsed": test["status"] != "INVALID_FRAME",
-        "function_valid": test["status"] == "VALID",
-        "reason": test["reason"],
+        "status": status,
+        "parsed": traffic_mode != "invalid",
+        "function_valid": traffic_mode != "invalid",
+        "reason": reason,
         "raw_hex": raw_frame.hex().upper(),
         "data_source": "SIMULATION",
         "data_status": "LIVE",
@@ -158,7 +143,10 @@ def create_sample(
     """Build one timestamped live simulation sample."""
 
     scenario = SCENARIOS[scenario_name]
-    modbus_event = create_modbus_event(sequence)
+    modbus_event = create_modbus_event(
+    sequence,
+    SCENARIOS[scenario_name]["traffic_mode"],
+)
 
     tank_level = (tank_volume / capacity) * 100.0
 
@@ -206,8 +194,7 @@ def run_simulation(args):
 
     tank = TankConfig(
         capacity_liters=1000.0,
-        initial_volume_liters=args.initial_level
-        * 10.0,
+        initial_volume_liters=args.initial_level * 10.0,
         simulation_duration_minutes=1.0,
     )
 
