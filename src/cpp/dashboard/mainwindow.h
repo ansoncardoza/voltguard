@@ -94,6 +94,7 @@ private:
     QLabel *liveProtocolFindingsSummary;
     QLabel *liveSecuritySummary;
     QLabel *liveDecisionSummary;
+    QTableWidget *liveSecurityEventTable;
     int liveProtocolTotalFrames = 0;
     int liveProtocolFC03Count = 0;
     int liveProtocolFC06Count = 0;

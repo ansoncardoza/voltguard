@@ -79,7 +79,8 @@ MainWindow::MainWindow(QWidget *parent)
       liveProtocolSummary(nullptr),
       liveProtocolFindingsSummary(nullptr),
       liveSecuritySummary(nullptr),
-      liveDecisionSummary(nullptr)
+      liveDecisionSummary(nullptr),
+      liveSecurityEventTable(nullptr)
    {
     setWindowTitle("VoltGuard - ICS/SCADA Security Dashboard");
     resize(1100, 700);
@@ -2676,6 +2677,74 @@ livePanelsLayout->addWidget(liveDecisionSummary, 1);
 alertsLayout->addSpacing(6);
 alertsLayout->addLayout(livePanelsLayout);
 
+// Live Security Event History
+QLabel *liveHistoryTitle = new QLabel("LIVE SECURITY EVENT HISTORY");
+
+liveHistoryTitle->setStyleSheet(
+    "font-size: 16px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+    "padding: 6px 0px;"
+);
+
+liveSecurityEventTable = new QTableWidget();
+
+liveSecurityEventTable->setColumnCount(4);
+liveSecurityEventTable->setHorizontalHeaderLabels({
+    "Frame",
+    "Status",
+    "Decision",
+    "Reason"
+});
+
+liveSecurityEventTable->setEditTriggers(
+    QAbstractItemView::NoEditTriggers
+);
+
+liveSecurityEventTable->setSelectionBehavior(
+    QAbstractItemView::SelectRows
+);
+
+liveSecurityEventTable->setSelectionMode(
+    QAbstractItemView::SingleSelection
+);
+
+liveSecurityEventTable->verticalHeader()->setVisible(false);
+liveSecurityEventTable->horizontalHeader()->setStretchLastSection(true);
+liveSecurityEventTable->setAlternatingRowColors(true);
+liveSecurityEventTable->setMaximumHeight(260);
+liveSecurityEventTable->setMinimumHeight(150);
+liveSecurityEventTable->horizontalHeader()->setVisible(true);
+
+liveSecurityEventTable->horizontalHeader()->setMinimumHeight(32);
+
+liveSecurityEventTable->setStyleSheet(
+    "QTableWidget {"
+    "background-color: #ffffff;"
+    "color: #1e293b;"
+    "gridline-color: #cbd5e1;"
+    "border: 1px solid #cbd5e1;"
+    "font-size: 13px;"
+    "}"
+    "QTableWidget::item {"
+    "color: #1e293b;"
+    "padding: 6px;"
+    "}"
+    "QHeaderView::section {"
+    "background-color: #e2e8f0;"
+    "color: #0f172a;"
+    "font-weight: bold;"
+    "font-size: 13px;"
+    "padding: 8px;"
+    "border: 1px solid #cbd5e1;"
+    "}"
+);
+
+alertsLayout->addSpacing(6);
+alertsLayout->addWidget(liveHistoryTitle);
+alertsLayout->addWidget(liveSecurityEventTable);
+
 // Three-column historical security analysis layout.
 QGridLayout *historicalAnalysisLayout = new QGridLayout();
 historicalAnalysisLayout->setSpacing(12);
@@ -3408,6 +3477,48 @@ void MainWindow::handleLiveDecisionOutput()
             "\n\nInterpretation:\n" + interpretation;
 
         liveDecisionSummary->setText(details);
+
+        // Add the latest event to Live Security Event History.
+if (liveSecurityEventTable != nullptr)
+{
+    int row = 0;
+
+    liveSecurityEventTable->insertRow(row);
+
+    int frameNumber = root.value("frame_number").toInt();
+    QString frameStatus = root.value("frame_status").toString();
+    QString frameReason = root.value("frame_reason").toString();
+
+    liveSecurityEventTable->setItem(
+        row, 0,
+        new QTableWidgetItem(QString::number(frameNumber))
+    );
+
+    liveSecurityEventTable->setItem(
+        row, 1,
+        new QTableWidgetItem(frameStatus)
+    );
+
+    liveSecurityEventTable->setItem(
+        row, 2,
+        new QTableWidgetItem(decisionValue)
+    );
+
+    liveSecurityEventTable->setItem(
+        row, 3,
+        new QTableWidgetItem(
+            frameReason.isEmpty() ? "No reason provided" : frameReason
+        )
+    );
+
+    // Keep only the latest 100 events.
+    while (liveSecurityEventTable->rowCount() > 100)
+    {
+        liveSecurityEventTable->removeRow(
+            liveSecurityEventTable->rowCount() - 1
+        );
+    }
+}
 
         if (decisionValue == "ALLOW")
         {
