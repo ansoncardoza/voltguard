@@ -2784,6 +2784,7 @@ alertsLayout->addStretch();
 
     stackedWidget->addWidget(alertsPage);
 
+
     // =========================================
     // PAGE 6: REPORTS
     // =========================================
@@ -2791,394 +2792,456 @@ alertsLayout->addStretch();
     QWidget *reportsPage = new QWidget(stackedWidget);
     QVBoxLayout *reportsLayout = new QVBoxLayout(reportsPage);
 
-    QLabel *reportsTitle = new QLabel("Reports");
+    reportsLayout->setContentsMargins(24, 20, 24, 20);
+    reportsLayout->setSpacing(12);
+
+    // Header
+
+    QLabel *reportsTitle = new QLabel("Reports & Evidence Center");
 
     reportsTitle->setStyleSheet(
         "font-size: 26px;"
         "font-weight: bold;"
         "color: #0f172a;"
-        "background-color: transparent;"
+        "background: transparent;"
     );
 
     QLabel *reportsSubtitle = new QLabel(
-    "View analysis results, protocol reports and generated security evidence."
-);
-
-reportsSubtitle->setWordWrap(true);
-
-reportsSubtitle->setStyleSheet(
-    "font-size: 14px;"
-    "color: #64748b;"
-    "background-color: transparent;"
-);
-
-    QLabel *reportsInfo = new QLabel(
-        "VoltGuard Analysis Reports\n\n"
-        "Combined Analysis Report:\n"
-        "reports/combined_analysis_report.json\n\n"
-        "Protocol Parser Report:\n"
-        "data/generated/parser_results.json\n\n"
-        "Run a scenario to generate fresh analysis results."
+        "Review generated analysis results, protocol reports and security evidence."
     );
 
-    reportsInfo->setWordWrap(true);
-
-    reportsInfo->setStyleSheet(
-        "color: #334155;"
-        "font-size: 15px;"
-        "background-color: transparent;"
+    reportsSubtitle->setWordWrap(true);
+    reportsSubtitle->setStyleSheet(
+        "font-size: 14px;"
+        "color: #64748b;"
+        "background: transparent;"
     );
+
+    reportsLayout->addWidget(reportsTitle);
+    reportsLayout->addWidget(reportsSubtitle);
+    reportsLayout->addSpacing(8);
+
+    // Report paths
+
+    QString reportsPath = QDir(
+        QCoreApplication::applicationDirPath()
+    ).absoluteFilePath("../reports");
+
+    QString dataPath = QDir(
+        QCoreApplication::applicationDirPath()
+    ).absoluteFilePath("../data/generated");
+
+    // Report availability
+
+    bool combinedAvailable =
+        QFile::exists(QDir(reportsPath).filePath(
+            "normal_combined_analysis_report.json"
+        )) &&
+        QFile::exists(QDir(reportsPath).filePath(
+            "abnormal_combined_analysis_report.json"
+        ));
+
+    bool protocolAvailable =
+        QFile::exists(QDir(dataPath).filePath(
+            "parser_results.json"
+        ));
+
+    bool decisionAvailable =
+        QFile::exists(QDir(reportsPath).filePath(
+            "normal_decision_report.json"
+        )) &&
+        QFile::exists(QDir(reportsPath).filePath(
+            "abnormal_decision_report.json"
+        ));
 
     // Report summary cards
 
-QHBoxLayout *reportCardsLayout = new QHBoxLayout();
+    QHBoxLayout *reportCardsLayout = new QHBoxLayout();
+    reportCardsLayout->setSpacing(12);
 
-QString reportCardStyle =
-    "background-color: #1e293b;"
-    "color: #f1f5f9;"
-    "font-size: 15px;"
-    "font-weight: bold;"
-    "padding: 20px;"
-    "border-radius: 8px;";
+    QString reportCardStyle =
+        "QFrame {"
+        "background-color: #1e293b;"
+        "border-radius: 8px;"
+        "}"
+        "QLabel {"
+        "color: #f8fafc;"
+        "background: transparent;"
+        "}";
 
-QLabel *combinedReportCard = new QLabel(
-    "COMBINED ANALYSIS\nProtocol + Physics"
-);
+    auto createReportCard = [&](const QString &heading,
+                                const QString &description,
+                                bool available)
+    {
+        QFrame *card = new QFrame();
+        card->setStyleSheet(reportCardStyle);
+        card->setMinimumHeight(105);
 
-QLabel *protocolReportCard = new QLabel(
-    "PROTOCOL REPORT\nModbus/TCP Analysis"
-);
+        QVBoxLayout *cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(14, 12, 14, 12);
+        cardLayout->setSpacing(5);
 
-QLabel *decisionReportCard = new QLabel(
-    "DECISION REPORT\nSecurity Assessment"
-);
+        QLabel *headingLabel = new QLabel(heading);
+        headingLabel->setStyleSheet(
+            "font-size: 15px;"
+            "font-weight: bold;"
+        );
 
-combinedReportCard->setStyleSheet(reportCardStyle);
-protocolReportCard->setStyleSheet(reportCardStyle);
-decisionReportCard->setStyleSheet(reportCardStyle);
+        QLabel *descriptionLabel = new QLabel(description);
+        descriptionLabel->setWordWrap(true);
+        descriptionLabel->setStyleSheet(
+            "font-size: 12px;"
+            "color: #cbd5e1;"
+        );
 
-// Check report availability
+        QLabel *statusLabel = new QLabel(
+            available ? "AVAILABLE" : "MISSING"
+        );
 
-QString reportsPath = QDir(
-    QCoreApplication::applicationDirPath()
-).absoluteFilePath("../reports");
+        statusLabel->setStyleSheet(
+            QString(
+                "font-size: 12px;"
+                "font-weight: bold;"
+                "color: %1;"
+            ).arg(available ? "#86efac" : "#fca5a5")
+        );
 
-QString dataPath = QDir(
-    QCoreApplication::applicationDirPath()
-).absoluteFilePath("../data/generated");
+        cardLayout->addWidget(headingLabel);
+        cardLayout->addWidget(descriptionLabel);
+        cardLayout->addStretch();
+        cardLayout->addWidget(statusLabel);
 
-bool combinedAvailable =
-    QFile::exists(QDir(reportsPath).filePath("normal_combined_analysis_report.json")) &&
-    QFile::exists(QDir(reportsPath).filePath("abnormal_combined_analysis_report.json"));
+        return card;
+    };
 
-bool protocolAvailable =
-    QFile::exists(QDir(dataPath).filePath("parser_results.json"));
+    reportCardsLayout->addWidget(
+        createReportCard(
+            "COMBINED ANALYSIS",
+            "Protocol and Physics reports",
+            combinedAvailable
+        )
+    );
 
-bool decisionAvailable =
-    QFile::exists(QDir(reportsPath).filePath("normal_decision_report.json")) &&
-    QFile::exists(QDir(reportsPath).filePath("abnormal_decision_report.json"));
+    reportCardsLayout->addWidget(
+        createReportCard(
+            "PROTOCOL REPORT",
+            "Modbus/TCP parser results",
+            protocolAvailable
+        )
+    );
 
-combinedReportCard->setText(
-    QString("COMBINED ANALYSIS\nProtocol + Physics\n%1")
-        .arg(combinedAvailable ? "REPORTS AVAILABLE" : "REPORTS MISSING")
-);
+    reportCardsLayout->addWidget(
+        createReportCard(
+            "DECISION REPORT",
+            "Security assessment results",
+            decisionAvailable
+        )
+    );
 
-protocolReportCard->setText(
-    QString("PROTOCOL REPORT\nModbus/TCP Analysis\n%1")
-        .arg(protocolAvailable ? "REPORT AVAILABLE" : "REPORT MISSING")
-);
+    reportsLayout->addLayout(reportCardsLayout);
 
-decisionReportCard->setText(
-    QString("DECISION REPORT\nSecurity Assessment\n%1")
-        .arg(decisionAvailable ? "REPORTS AVAILABLE" : "REPORTS MISSING")
-);
+    // Analysis control panel
 
-combinedReportCard->setMinimumHeight(85);
-protocolReportCard->setMinimumHeight(85);
-decisionReportCard->setMinimumHeight(85);
+    QFrame *analysisPanel = new QFrame();
 
-reportCardsLayout->addWidget(combinedReportCard);
-reportCardsLayout->addWidget(protocolReportCard);
-reportCardsLayout->addWidget(decisionReportCard);
+    analysisPanel->setStyleSheet(
+        "QFrame {"
+        "background-color: #f8fafc;"
+        "border: 1px solid #e2e8f0;"
+        "border-radius: 8px;"
+        "}"
+    );
+
+    QHBoxLayout *analysisPanelLayout =
+        new QHBoxLayout(analysisPanel);
+
+    analysisPanelLayout->setContentsMargins(16, 12, 16, 12);
+
+    QVBoxLayout *analysisTextLayout = new QVBoxLayout();
+
+    QLabel *analysisTitle = new QLabel("Generate Analysis Reports");
+    analysisTitle->setStyleSheet(
+        "font-size: 16px;"
+        "font-weight: bold;"
+        "color: #0f172a;"
+        "background: transparent;"
+    );
+
+    QLabel *analysisDescription = new QLabel(
+        "Run the analysis using the selected historical scenario."
+    );
+
+    analysisDescription->setWordWrap(true);
+    analysisDescription->setStyleSheet(
+        "font-size: 12px;"
+        "color: #64748b;"
+        "background: transparent;"
+    );
+
+    analysisTextLayout->addWidget(analysisTitle);
+    analysisTextLayout->addWidget(analysisDescription);
 
     QPushButton *runAnalysisButton =
         new QPushButton("Run Analysis");
 
     runAnalysisButton->setMinimumHeight(42);
-    runAnalysisButton->setMinimumWidth(180);
-    runAnalysisButton->setMaximumWidth(250);
-
+    runAnalysisButton->setMinimumWidth(160);
     runAnalysisButton->setStyleSheet(
-    "QPushButton {"
-    "color: white;"
-    "background-color: #2563eb;"
-    "border: 1px solid #1d4ed8;"
-    "border-radius: 6px;"
-    "padding: 10px 16px;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "background-color: #1d4ed8;"
-    "}"
-    "QPushButton:disabled {"
-    "background-color: #94a3b8;"
-    "color: white;"
-    "}"
+        "QPushButton {"
+        "color: white;"
+        "background-color: #2563eb;"
+        "border: none;"
+        "border-radius: 6px;"
+        "padding: 10px 16px;"
+        "font-size: 14px;"
+        "font-weight: bold;"
+        "}"
+        "QPushButton:hover {"
+        "background-color: #1d4ed8;"
+        "}"
+        "QPushButton:disabled {"
+        "background-color: #94a3b8;"
+        "}"
     );
+
+    analysisPanelLayout->addLayout(analysisTextLayout, 1);
+    analysisPanelLayout->addWidget(runAnalysisButton);
+
+    reportsLayout->addWidget(analysisPanel);
 
     QLabel *analysisStatusLabel =
         new QLabel("Analysis Status: READY");
 
     analysisStatusLabel->setWordWrap(true);
-
     analysisStatusLabel->setStyleSheet(
-    "color: #15803d;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "background-color: #f0fdf4;"
-    "padding: 10px;"
-    "border-radius: 6px;"
+        "color: #15803d;"
+        "font-size: 13px;"
+        "font-weight: bold;"
+        "background-color: #f0fdf4;"
+        "padding: 10px;"
+        "border-radius: 6px;"
     );
 
-    reportsLayout->addWidget(reportsTitle);
-    reportsLayout->addWidget(reportsSubtitle);
-    reportsLayout->addSpacing(12);
-    reportsLayout->addLayout(reportCardsLayout);
-    QLabel *reportLocationTitle = new QLabel(
-    "Report Storage Location"
-);
-
-reportLocationTitle->setStyleSheet(
-    "font-size: 18px;"
-    "font-weight: bold;"
-    "color: #0f172a;"
-    "background-color: transparent;"
-);
-
-QLabel *reportLocationInfo = new QLabel(
-    "Generated reports: ../reports/\n"
-    "Protocol parser data: ../data/generated/"
-);
-
-reportLocationInfo->setStyleSheet(
-    "font-size: 14px;"
-    "color: #475569;"
-    "background-color: #f1f5f9;"
-    "padding: 12px;"
-    "border-radius: 6px;"
-);
-
-reportLocationInfo->setWordWrap(true);
-
-reportsLayout->addWidget(reportLocationTitle);
-reportsLayout->addWidget(reportLocationInfo);
-QPushButton *openReportsFolderButton = new QPushButton(
-    "Open Reports Folder"
-);
-
-openReportsFolderButton->setStyleSheet(
-    "background-color: #2563eb;"
-    "color: white;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "padding: 12px;"
-    "border-radius: 6px;"
-);
-
-reportsLayout->addWidget(openReportsFolderButton);
-QPushButton *openCombinedReportButton = new QPushButton(
-    "Open Combined Analysis Report"
-);
-
-openCombinedReportButton->setStyleSheet(
-    "background-color: #0f766e;"
-    "color: white;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "padding: 12px;"
-    "border-radius: 6px;"
-);
-
-reportsLayout->addWidget(openCombinedReportButton);
-QPushButton *openAbnormalCombinedReportButton = new QPushButton(
-    "Open Abnormal Combined Analysis Report"
-);
-
-openAbnormalCombinedReportButton->setStyleSheet(
-    "background-color: #be123c;"
-    "color: white;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "padding: 12px;"
-    "border-radius: 6px;"
-);
-
-reportsLayout->addWidget(openAbnormalCombinedReportButton);
-QPushButton *openProtocolReportButton = new QPushButton(
-    "Open Protocol Parser Report"
-);
-
-openProtocolReportButton->setStyleSheet(
-    "background-color: #7c3aed;"
-    "color: white;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "padding: 12px;"
-    "border-radius: 6px;"
-);
-
-reportsLayout->addWidget(openProtocolReportButton);
-QObject::connect(
-    openCombinedReportButton,
-    &QPushButton::clicked,
-    reportsPage,
-    [reportsPath]()
-    {
-        QString reportFile = QDir(reportsPath).filePath(
-            "normal_combined_analysis_report.json"
-        );
-
-        QDesktopServices::openUrl(
-            QUrl::fromLocalFile(reportFile)
-        );
-    }
-);
-reportsLayout->addWidget(openCombinedReportButton);
-
-openProtocolReportButton->setStyleSheet(
-    "background-color: #7c3aed;"
-    "color: white;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "padding: 12px;"
-    "border-radius: 6px;"
-);
-
-reportsLayout->addWidget(openProtocolReportButton);
-QPushButton *openDecisionReportButton = new QPushButton(
-    "Open Security Decision Report"
-);
-
-openDecisionReportButton->setStyleSheet(
-    "background-color: #b45309;"
-    "color: white;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "padding: 12px;"
-    "border-radius: 6px;"
-);
-
-reportsLayout->addWidget(openDecisionReportButton);
-QPushButton *openAbnormalDecisionReportButton = new QPushButton(
-    "Open Abnormal Security Decision Report"
-);
-
-openAbnormalDecisionReportButton->setStyleSheet(
-    "background-color: #991b1b;"
-    "color: white;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "padding: 12px;"
-    "border-radius: 6px;"
-);
-
-reportsLayout->addWidget(openAbnormalDecisionReportButton);
-
-// Combined Analysis Report
-QObject::connect(
-    openCombinedReportButton,
-    &QPushButton::clicked,
-    reportsPage,
-    [reportsPath]()
-    {
-        QString reportFile = QDir(reportsPath).filePath(
-            "normal_combined_analysis_report.json"
-        );
-
-        QDesktopServices::openUrl(
-            QUrl::fromLocalFile(reportFile)
-        );
-    }
-);
-
-// Protocol Parser Report — ADD THIS CONNECTION HERE
-QObject::connect(
-    openProtocolReportButton,
-    &QPushButton::clicked,
-    reportsPage,
-    [dataPath]()
-    {
-        QString reportFile = QDir(dataPath).filePath(
-            "parser_results.json"
-        );
-
-        QDesktopServices::openUrl(
-            QUrl::fromLocalFile(reportFile)
-        );
-    }
-);
-QObject::connect(
-    openDecisionReportButton,
-    &QPushButton::clicked,
-    reportsPage,
-    [reportsPath]()
-    {
-        QString reportFile = QDir(reportsPath).filePath(
-            "normal_decision_report.json"
-        );
-
-        QDesktopServices::openUrl(
-            QUrl::fromLocalFile(reportFile)
-        );
-    }
-);
-QObject::connect(
-    openAbnormalCombinedReportButton,
-    &QPushButton::clicked,
-    reportsPage,
-    [reportsPath]()
-    {
-        QString reportFile = QDir(reportsPath).filePath(
-            "abnormal_combined_analysis_report.json"
-        );
-
-        QDesktopServices::openUrl(
-            QUrl::fromLocalFile(reportFile)
-        );
-    }
-);
-QObject::connect(
-    openAbnormalDecisionReportButton,
-    &QPushButton::clicked,
-    reportsPage,
-    [reportsPath]()
-    {
-        QString reportFile = QDir(reportsPath).filePath(
-            "abnormal_decision_report.json"
-        );
-
-        QDesktopServices::openUrl(
-            QUrl::fromLocalFile(reportFile)
-        );
-    }
-);
-QObject::connect(
-    openReportsFolderButton,
-    &QPushButton::clicked,
-    reportsPage,
-    [reportsPath]()
-    {
-        QDesktopServices::openUrl(
-            QUrl::fromLocalFile(reportsPath)
-        );
-    }
-);
-    reportsLayout->addWidget(reportsInfo);
-    reportsLayout->addSpacing(15);
-    reportsLayout->addWidget(runAnalysisButton);
     reportsLayout->addWidget(analysisStatusLabel);
+
+    // Generated reports
+
+    QLabel *generatedReportsTitle =
+        new QLabel("Generated Reports");
+
+    generatedReportsTitle->setStyleSheet(
+        "font-size: 18px;"
+        "font-weight: bold;"
+        "color: #0f172a;"
+        "background: transparent;"
+    );
+
+    reportsLayout->addWidget(generatedReportsTitle);
+
+    QGridLayout *reportButtonsLayout = new QGridLayout();
+    reportButtonsLayout->setHorizontalSpacing(12);
+    reportButtonsLayout->setVerticalSpacing(10);
+
+    auto createReportButton = [](const QString &text,
+                                 const QString &background)
+    {
+        QPushButton *button = new QPushButton(text);
+        button->setMinimumHeight(42);
+        button->setStyleSheet(
+            QString(
+                "QPushButton {"
+                "background-color: %1;"
+                "color: white;"
+                "font-size: 13px;"
+                "font-weight: bold;"
+                "padding: 9px;"
+                "border: none;"
+                "border-radius: 6px;"
+                "}"
+                "QPushButton:hover {"
+                "background-color: #334155;"
+                "}"
+            ).arg(background)
+        );
+
+        return button;
+    };
+
+    QPushButton *openCombinedReportButton =
+        createReportButton(
+            "Open Normal Combined Report", "#0f766e"
+        );
+
+    QPushButton *openAbnormalCombinedReportButton =
+        createReportButton(
+            "Open Abnormal Combined Report", "#be123c"
+        );
+
+    QPushButton *openProtocolReportButton =
+        createReportButton(
+            "Open Protocol Parser Report", "#7c3aed"
+        );
+
+    QPushButton *openDecisionReportButton =
+        createReportButton(
+            "Open Normal Security Decision Report", "#b45309"
+        );
+
+    QPushButton *openAbnormalDecisionReportButton =
+        createReportButton(
+            "Open Abnormal Security Decision Report", "#991b1b"
+        );
+
+    reportButtonsLayout->addWidget(
+        openCombinedReportButton, 0, 0
+    );
+
+    reportButtonsLayout->addWidget(
+        openAbnormalCombinedReportButton, 0, 1
+    );
+
+    reportButtonsLayout->addWidget(
+        openProtocolReportButton, 1, 0
+    );
+
+    reportButtonsLayout->addWidget(
+        openDecisionReportButton, 1, 1
+    );
+
+    reportButtonsLayout->addWidget(
+        openAbnormalDecisionReportButton, 2, 0, 1, 2
+    );
+
+    reportsLayout->addLayout(reportButtonsLayout);
+
+    // Report storage
+
+    QFrame *storagePanel = new QFrame();
+
+    storagePanel->setStyleSheet(
+        "QFrame {"
+        "background-color: #f1f5f9;"
+        "border-radius: 8px;"
+        "}"
+    );
+
+    QHBoxLayout *storageLayout = new QHBoxLayout(storagePanel);
+    storageLayout->setContentsMargins(14, 10, 14, 10);
+
+    QLabel *reportLocationInfo = new QLabel(
+        "Storage: ../reports/\n"
+        "Protocol data: ../data/generated/"
+    );
+
+    reportLocationInfo->setWordWrap(true);
+    reportLocationInfo->setStyleSheet(
+        "font-size: 12px;"
+        "color: #475569;"
+        "background: transparent;"
+    );
+
+    QPushButton *openReportsFolderButton =
+        createReportButton("Open Reports Folder", "#2563eb");
+
+    storageLayout->addWidget(reportLocationInfo, 1);
+    storageLayout->addWidget(openReportsFolderButton);
+
+    reportsLayout->addWidget(storagePanel);
     reportsLayout->addStretch();
+
+    // Report opening connections
+
+    QObject::connect(
+        openCombinedReportButton,
+        &QPushButton::clicked,
+        reportsPage,
+        [reportsPath]()
+        {
+            QString reportFile = QDir(reportsPath).filePath(
+                "normal_combined_analysis_report.json"
+            );
+
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile(reportFile)
+            );
+        }
+    );
+
+    QObject::connect(
+        openAbnormalCombinedReportButton,
+        &QPushButton::clicked,
+        reportsPage,
+        [reportsPath]()
+        {
+            QString reportFile = QDir(reportsPath).filePath(
+                "abnormal_combined_analysis_report.json"
+            );
+
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile(reportFile)
+            );
+        }
+    );
+
+    QObject::connect(
+        openProtocolReportButton,
+        &QPushButton::clicked,
+        reportsPage,
+        [dataPath]()
+        {
+            QString reportFile = QDir(dataPath).filePath(
+                "parser_results.json"
+            );
+
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile(reportFile)
+            );
+        }
+    );
+
+    QObject::connect(
+        openDecisionReportButton,
+        &QPushButton::clicked,
+        reportsPage,
+        [reportsPath]()
+        {
+            QString reportFile = QDir(reportsPath).filePath(
+                "normal_decision_report.json"
+            );
+
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile(reportFile)
+            );
+        }
+    );
+
+    QObject::connect(
+        openAbnormalDecisionReportButton,
+        &QPushButton::clicked,
+        reportsPage,
+        [reportsPath]()
+        {
+            QString reportFile = QDir(reportsPath).filePath(
+                "abnormal_decision_report.json"
+            );
+
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile(reportFile)
+            );
+        }
+    );
+
+    QObject::connect(
+        openReportsFolderButton,
+        &QPushButton::clicked,
+        reportsPage,
+        [reportsPath]()
+        {
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile(reportsPath)
+            );
+        }
+    );
 
     // Run Python analysis when requested
 
@@ -3216,14 +3279,16 @@ QObject::connect(
                     "Analysis Status: Python environment not found.\n"
                     "Install dependencies using INSTALLATION.md."
                 );
+
                 analysisStatusLabel->setStyleSheet(
-    "color: #b45309;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "background-color: #fffbeb;"
-    "padding: 10px;"
-    "border-radius: 6px;"
-);
+                    "color: #b45309;"
+                    "font-size: 14px;"
+                    "font-weight: bold;"
+                    "background-color: #fffbeb;"
+                    "padding: 10px;"
+                    "border-radius: 6px;"
+                );
+
                 return;
             }
 
@@ -3232,14 +3297,16 @@ QObject::connect(
                 analysisStatusLabel->setText(
                     "Analysis Status: run_analysis.py not found."
                 );
+
                 analysisStatusLabel->setStyleSheet(
-    "color: #15803d;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "background-color: #f0fdf4;"
-    "padding: 10px;"
-    "border-radius: 6px;"
-);
+                    "color: #dc2626;"
+                    "font-size: 14px;"
+                    "font-weight: bold;"
+                    "background-color: #fef2f2;"
+                    "padding: 10px;"
+                    "border-radius: 6px;"
+                );
+
                 return;
             }
 
@@ -3282,17 +3349,19 @@ QObject::connect(
             if (exitStatus == QProcess::NormalExit && exitCode == 0)
             {
                 analysisStatusLabel->setText(
-        "Analysis Status: COMPLETED SUCCESSFULLY.\n"
-        "Reports have been generated."
-    );
-            analysisStatusLabel->setStyleSheet(
-    "color: #15803d;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "background-color: #f0fdf4;"
-    "padding: 10px;"
-    "border-radius: 6px;"
-);
+                    "Analysis Status: COMPLETED SUCCESSFULLY.\n"
+                    "Reports have been generated."
+                );
+
+                analysisStatusLabel->setStyleSheet(
+                    "color: #15803d;"
+                    "font-size: 14px;"
+                    "font-weight: bold;"
+                    "background-color: #f0fdf4;"
+                    "padding: 10px;"
+                    "border-radius: 6px;"
+                );
+
                 updatePhysicsScenario();
                 updateSecurityAlerts();
             }
@@ -3302,14 +3371,15 @@ QObject::connect(
                     "Analysis Status: FAILED.\n"
                     "Exit code: " + QString::number(exitCode)
                 );
+
                 analysisStatusLabel->setStyleSheet(
-    "color: #dc2626;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "background-color: #fef2f2;"
-    "padding: 10px;"
-    "border-radius: 6px;"
-);
+                    "color: #dc2626;"
+                    "font-size: 14px;"
+                    "font-weight: bold;"
+                    "background-color: #fef2f2;"
+                    "padding: 10px;"
+                    "border-radius: 6px;"
+                );
             }
         }
     );
@@ -3323,20 +3393,23 @@ QObject::connect(
         [this, runAnalysisButton, analysisStatusLabel]
         (QProcess::ProcessError error)
         {
+            Q_UNUSED(error);
+
             runAnalysisButton->setEnabled(true);
 
             analysisStatusLabel->setText(
                 "Analysis Status: PROCESS ERROR.\n" +
                 analysisProcess->errorString()
             );
-        analysisStatusLabel->setStyleSheet(
-    "color: #dc2626;"
-    "font-size: 14px;"
-    "font-weight: bold;"
-    "background-color: #fef2f2;"
-    "padding: 10px;"
-    "border-radius: 6px;"
-);
+
+            analysisStatusLabel->setStyleSheet(
+                "color: #dc2626;"
+                "font-size: 14px;"
+                "font-weight: bold;"
+                "background-color: #fef2f2;"
+                "padding: 10px;"
+                "border-radius: 6px;"
+            );
         }
     );
 
