@@ -25,7 +25,6 @@
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QProgressBar>
 #include <QGridLayout>
 #include <QFile>
 #include <QDir>
@@ -33,10 +32,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
-#include <QComboBox>
-#include <QStringList>
 #include <QColor>
 #include <QBrush>
+#include <QFileInfo>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -303,6 +301,154 @@ connect(
 MainWindow::~MainWindow()
 {
     stopLiveSimulation();
+}
+
+
+void MainWindow::exportLiveSessionReport()
+{
+    // Do not generate an empty or invalid session report.
+qInfo() << "LIVE REPORT EXPORT STARTED";
+qInfo() << "Session start:" << liveSessionStartTime;
+qInfo() << "Scenario:" << liveSessionScenario;
+qInfo() << "Captured samples:" << liveSessionSamples.size();
+qInfo() << "Captured decisions:" << liveSessionDecisions.size();
+
+if (!liveSessionStartTime.isValid() ||
+    liveSessionSamples.isEmpty())
+{
+    qWarning() << "LIVE REPORT EXPORT SKIPPED:"
+               << "Session start invalid or no samples captured.";
+    return;
+}
+
+    QString projectRoot = QDir(
+        QCoreApplication::applicationDirPath()
+    ).absoluteFilePath("..");
+
+    projectRoot = QDir::cleanPath(projectRoot);
+
+    QString pythonExecutable = QDir(projectRoot).filePath(
+        ".venv/Scripts/python.exe"
+    );
+
+    if (!QFile::exists(pythonExecutable))
+    {
+        qWarning() << "VoltGuard report export failed:"
+                   << "Python executable not found.";
+        return;
+    }
+
+    // Create the live session reports directory.
+    QString reportsDirectory = QDir(projectRoot).filePath(
+        "reports/live_sessions"
+    );
+
+    if (!QDir().mkpath(reportsDirectory))
+    {
+        qWarning() << "VoltGuard report export failed:"
+                   << "Could not create reports directory.";
+        return;
+    }
+
+    // Prepare the actual captured session evidence.
+    QJsonObject payload;
+
+    payload.insert(
+        "session_start",
+        liveSessionStartTime.toString(Qt::ISODateWithMs)
+    );
+
+    payload.insert(
+        "session_end",
+        QDateTime::currentDateTime().toString(Qt::ISODateWithMs)
+    );
+
+    payload.insert("scenario", liveSessionScenario);
+    payload.insert("samples", liveSessionSamples);
+    payload.insert("decisions", liveSessionDecisions);
+
+    // Write a temporary JSON payload for the Python generator.
+    QString timestamp = QDateTime::currentDateTime().toString(
+        "yyyyMMdd_HHmmss_zzz"
+    );
+
+    QString payloadPath = QDir::temp().filePath(
+        "voltguard_live_payload_" + timestamp + ".json"
+    );
+
+    QFile payloadFile(payloadPath);
+
+    if (!payloadFile.open(QIODevice::WriteOnly))
+    {
+        qWarning() << "VoltGuard report export failed:"
+                   << "Could not write session payload.";
+        return;
+    }
+
+    payloadFile.write(
+        QJsonDocument(payload).toJson(QJsonDocument::Indented)
+    );
+
+    payloadFile.close();
+
+    // Run the Python live-session report generator.
+    QProcess reportProcess;
+
+    reportProcess.setWorkingDirectory(projectRoot);
+
+    QStringList arguments;
+
+    arguments << "-m"
+              << "src.python.integration.live_session_report"
+              << "--input"
+              << payloadPath
+              << "--output-dir"
+              << reportsDirectory;
+
+    reportProcess.start(pythonExecutable, arguments);
+
+    if (!reportProcess.waitForStarted(3000))
+    {
+        qWarning() << "VoltGuard report export failed:"
+                   << "Could not start Python report generator.";
+
+        payloadFile.remove();
+        return;
+    }
+
+    if (!reportProcess.waitForFinished(30000))
+    {
+        reportProcess.kill();
+        reportProcess.waitForFinished(1000);
+
+        qWarning() << "VoltGuard report export failed:"
+                   << "Report generation timed out.";
+
+        payloadFile.remove();
+        return;
+    }
+
+    QByteArray output =
+        reportProcess.readAllStandardOutput();
+
+    QByteArray errors =
+        reportProcess.readAllStandardError();
+
+    payloadFile.remove();
+
+    if (reportProcess.exitStatus() == QProcess::NormalExit &&
+        reportProcess.exitCode() == 0)
+    {
+        qInfo().noquote()
+            << "VoltGuard live session reports generated:"
+            << output;
+    }
+    else
+    {
+        qWarning().noquote()
+            << "VoltGuard report generation failed:"
+            << errors;
+    }
 }
 
 // Create dashboard pages
@@ -2748,7 +2894,7 @@ alertsLayout->addSpacing(6);
 alertsLayout->addLayout(livePanelsLayout);
 
 // Live Security Event History
-QLabel *liveHistoryTitle = new QLabel("LIVE SECURITY EVENT HISTORY");
+QLabel *liveHistoryTitle = new QLabel("LIVE SECURITY EVENT HISTORY");;
 
 liveHistoryTitle->setStyleSheet(
     "font-size: 16px;"
@@ -2760,10 +2906,12 @@ liveHistoryTitle->setStyleSheet(
 
 liveSecurityEventTable = new QTableWidget();
 
-liveSecurityEventTable->setColumnCount(4);
+liveSecurityEventTable->setColumnCount(6);
 liveSecurityEventTable->setHorizontalHeaderLabels({
+    "Timestamp",
     "Frame",
     "Status",
+    "Severity",
     "Decision",
     "Reason"
 });
@@ -2782,6 +2930,11 @@ liveSecurityEventTable->setSelectionMode(
 
 liveSecurityEventTable->verticalHeader()->setVisible(false);
 liveSecurityEventTable->horizontalHeader()->setStretchLastSection(true);
+liveSecurityEventTable->setColumnWidth(0, 170);
+liveSecurityEventTable->setColumnWidth(1, 65);
+liveSecurityEventTable->setColumnWidth(2, 110);
+liveSecurityEventTable->setColumnWidth(3, 85);
+liveSecurityEventTable->setColumnWidth(4, 90);
 liveSecurityEventTable->setAlternatingRowColors(true);
 liveSecurityEventTable->setMaximumHeight(260);
 liveSecurityEventTable->setMinimumHeight(150);
@@ -3184,6 +3337,238 @@ alertsLayout->addStretch();
 
     reportsLayout->addLayout(reportButtonsLayout);
 
+
+    // =========================================
+    // LIVE SESSION REPORT HISTORY
+    // =========================================
+
+    QHBoxLayout *liveHistoryHeader = new QHBoxLayout();
+
+    QLabel *liveReportHistoryTitle = new QLabel("Live Session Report History");
+
+    liveReportHistoryTitle->setStyleSheet(
+        "font-size: 18px;"
+        "font-weight: bold;"
+        "color: #0f172a;"
+        "background: transparent;"
+    );
+
+    QPushButton *refreshLiveHistoryButton =
+        createReportButton("Refresh History", "#475569");
+
+    refreshLiveHistoryButton->setMinimumWidth(145);
+
+    liveHistoryHeader->addWidget(liveReportHistoryTitle);
+    liveHistoryHeader->addStretch();
+    liveHistoryHeader->addWidget(refreshLiveHistoryButton);
+
+    reportsLayout->addLayout(liveHistoryHeader);
+
+    QTableWidget *liveReportHistoryTable =
+        new QTableWidget(0, 4, reportsPage);
+
+    liveReportHistoryTable->setHorizontalHeaderLabels({
+        "Scenario",
+        "Generated",
+        "PDF",
+        "JSON"
+    });
+
+    liveReportHistoryTable->setEditTriggers(
+        QAbstractItemView::NoEditTriggers
+    );
+
+    liveReportHistoryTable->setSelectionBehavior(
+        QAbstractItemView::SelectRows
+    );
+
+    liveReportHistoryTable->setSelectionMode(
+        QAbstractItemView::SingleSelection
+    );
+
+    liveReportHistoryTable->verticalHeader()->setVisible(false);
+
+    liveReportHistoryTable->horizontalHeader()->setStretchLastSection(true);
+
+    liveReportHistoryTable->setMinimumHeight(150);
+    liveReportHistoryTable->setMaximumHeight(230);
+
+    liveReportHistoryTable->setStyleSheet(
+    "QTableWidget {"
+    "background-color: #ffffff;"
+    "color: #0f172a;"
+    "border: 1px solid #cbd5e1;"
+    "border-radius: 6px;"
+    "gridline-color: #cbd5e1;"
+    "font-size: 13px;"
+    "}"
+    "QTableWidget::item {"
+    "color: #0f172a;"
+    "background-color: #ffffff;"
+    "padding: 6px;"
+    "}"
+    "QHeaderView::section {"
+    "background-color: #e2e8f0;"
+    "color: #0f172a;"
+    "font-weight: bold;"
+    "padding: 7px;"
+    "border: none;"
+    "}"
+);
+
+    reportsLayout->addWidget(liveReportHistoryTable);
+
+    // Refresh and populate the live session report history.
+    auto refreshLiveReportHistory =
+        [reportsPath, liveReportHistoryTable]()
+    {
+        liveReportHistoryTable->setRowCount(0);
+
+        QDir liveSessionsDir(
+            QDir(reportsPath).filePath("live_sessions")
+        );
+
+        if (!liveSessionsDir.exists())
+        {
+            liveReportHistoryTable->setRowCount(1);
+            liveReportHistoryTable->setItem(
+                0, 0,
+                new QTableWidgetItem("No live session reports found")
+            );
+            liveReportHistoryTable->setSpan(0, 0, 1, 4);
+            return;
+        }
+
+        QFileInfoList pdfFiles =
+            liveSessionsDir.entryInfoList(
+                QStringList() << "VoltGuard_*.pdf",
+                QDir::Files,
+                QDir::Time
+            );
+
+        int row = 0;
+
+        for (const QFileInfo &pdfInfo : pdfFiles)
+        {
+            QString baseName = pdfInfo.completeBaseName();
+
+            QString pdfPath = pdfInfo.absoluteFilePath();
+            QString jsonPath =
+                liveSessionsDir.filePath(baseName + ".json");
+
+            // Only show complete PDF and JSON report pairs.
+            if (!QFileInfo::exists(jsonPath))
+                continue;
+
+            QString scenario = "Other Scenario";
+
+            if (baseName.startsWith("VoltGuard_Normal_Tank_Filling_"))
+                scenario = "Normal Tank Filling";
+            else if (baseName.startsWith("VoltGuard_Pump_Off_"))
+                scenario = "Pump OFF";
+            else if (baseName.startsWith("VoltGuard_Invalid_Traffic_Test_"))
+                scenario = "Invalid Traffic Test";
+
+            liveReportHistoryTable->insertRow(row);
+
+            liveReportHistoryTable->setItem(
+                row, 0, new QTableWidgetItem(scenario)
+            );
+
+            liveReportHistoryTable->setItem(
+                row, 1,
+                new QTableWidgetItem(
+                    pdfInfo.lastModified().toString("yyyy-MM-dd HH:mm:ss")
+                )
+            );
+
+            QPushButton *openPdfButton =
+                new QPushButton("Open PDF");
+
+            QPushButton *openJsonButton =
+                new QPushButton("Open JSON");
+
+            openPdfButton->setStyleSheet(
+    "QPushButton {"
+    "background-color: #2563eb;"
+    "color: #ffffff;"
+    "font-weight: bold;"
+    "border: none;"
+    "border-radius: 4px;"
+    "padding: 6px;"
+    "}"
+    "QPushButton:hover {"
+    "background-color: #1d4ed8;"
+    "}"
+);
+
+openJsonButton->setStyleSheet(
+    "QPushButton {"
+    "background-color: #475569;"
+    "color: #ffffff;"
+    "font-weight: bold;"
+    "border: none;"
+    "border-radius: 4px;"
+    "padding: 6px;"
+    "}"
+    "QPushButton:hover {"
+    "background-color: #334155;"
+    "}"
+);
+
+            QObject::connect(
+                openPdfButton,
+                &QPushButton::clicked,
+                liveReportHistoryTable,
+                [pdfPath]()
+                {
+                    QDesktopServices::openUrl(
+                        QUrl::fromLocalFile(pdfPath)
+                    );
+                }
+            );
+
+            QObject::connect(
+                openJsonButton,
+                &QPushButton::clicked,
+                liveReportHistoryTable,
+                [jsonPath]()
+                {
+                    QDesktopServices::openUrl(
+                        QUrl::fromLocalFile(jsonPath)
+                    );
+                }
+            );
+
+            liveReportHistoryTable->setCellWidget(row, 2, openPdfButton);
+            liveReportHistoryTable->setCellWidget(row, 3, openJsonButton);
+
+            row++;
+        }
+
+        if (row == 0)
+        {
+            liveReportHistoryTable->setRowCount(1);
+            liveReportHistoryTable->setItem(
+                0, 0,
+                new QTableWidgetItem("No live session reports found")
+            );
+            liveReportHistoryTable->setSpan(0, 0, 1, 4);
+        }
+
+        liveReportHistoryTable->resizeRowsToContents();
+    };
+
+    // Refresh button and initial table population.
+    QObject::connect(
+        refreshLiveHistoryButton,
+        &QPushButton::clicked,
+        reportsPage,
+        refreshLiveReportHistory
+    );
+
+    refreshLiveReportHistory();
+
     // Report storage
 
     QFrame *storagePanel = new QFrame();
@@ -3542,6 +3927,7 @@ void MainWindow::switchPage(int pageIndex)
     }
 }
 
+
 // Handle continuous JSON Lines from the Python simulation
 void MainWindow::handleLiveDecisionOutput()
 {
@@ -3580,6 +3966,9 @@ void MainWindow::handleLiveDecisionOutput()
         }
 
         QJsonObject root = document.object();
+
+        // Preserve each valid decision event for the live session report.
+liveSessionDecisions.append(root);
 
         if (root.value("data_status").toString() == "ERROR")
         {
@@ -3622,47 +4011,81 @@ void MainWindow::handleLiveDecisionOutput()
         liveDecisionSummary->setText(details);
 
         // Add the latest event to Live Security Event History.
-if (liveSecurityEventTable != nullptr)
-{
-    int row = 0;
+        if (liveSecurityEventTable != nullptr)
+        {
+            int row = 0;
 
-    liveSecurityEventTable->insertRow(row);
+            liveSecurityEventTable->insertRow(row);
 
-    int frameNumber = root.value("frame_number").toInt();
-    QString frameStatus = root.value("frame_status").toString();
-    QString frameReason = root.value("frame_reason").toString();
+            QString timestamp =
+                root.value("timestamp").toString();
 
-    liveSecurityEventTable->setItem(
-        row, 0,
-        new QTableWidgetItem(QString::number(frameNumber))
-    );
+            int frameNumber =
+                root.value("frame_number").toInt();
 
-    liveSecurityEventTable->setItem(
-        row, 1,
-        new QTableWidgetItem(frameStatus)
-    );
+            QString frameStatus =
+                root.value("frame_status").toString();
 
-    liveSecurityEventTable->setItem(
-        row, 2,
-        new QTableWidgetItem(decisionValue)
-    );
+            QString frameReason =
+                root.value("frame_reason").toString();
 
-    liveSecurityEventTable->setItem(
-        row, 3,
-        new QTableWidgetItem(
-            frameReason.isEmpty() ? "No reason provided" : frameReason
-        )
-    );
+            // Determine severity from actual decision and frame status.
+            QString severity = "INFO";
 
-    // Keep only the latest 100 events.
-    while (liveSecurityEventTable->rowCount() > 100)
-    {
-        liveSecurityEventTable->removeRow(
-            liveSecurityEventTable->rowCount() - 1
-        );
-    }
-}
+            if (decisionValue.compare("DROP", Qt::CaseInsensitive) == 0 ||
+                frameStatus.compare("INVALID_FRAME", Qt::CaseInsensitive) == 0)
+            {
+                severity = "HIGH";
+            }
+            else if (frameStatus.compare("VALIDATION_FAILED", Qt::CaseInsensitive) == 0)
+            {
+                severity = "MEDIUM";
+            }
 
+            liveSecurityEventTable->setItem(
+                row, 0,
+                new QTableWidgetItem(
+                    timestamp.isEmpty() ? "Timestamp unavailable" : timestamp
+                )
+            );
+
+            liveSecurityEventTable->setItem(
+                row, 1,
+                new QTableWidgetItem(QString::number(frameNumber))
+            );
+
+            liveSecurityEventTable->setItem(
+                row, 2,
+                new QTableWidgetItem(frameStatus)
+            );
+
+            liveSecurityEventTable->setItem(
+                row, 3,
+                new QTableWidgetItem(severity)
+            );
+
+            liveSecurityEventTable->setItem(
+                row, 4,
+                new QTableWidgetItem(decisionValue)
+            );
+
+            liveSecurityEventTable->setItem(
+                row, 5,
+                new QTableWidgetItem(
+                    frameReason.isEmpty() ? "No reason provided" : frameReason
+                )
+            );
+
+            // Keep only the latest 100 events.
+            while (liveSecurityEventTable->rowCount() > 100)
+            {
+                liveSecurityEventTable->removeRow(
+                    liveSecurityEventTable->rowCount() - 1
+                );
+            }
+        }
+
+        // Preserve the existing decision-based styling.
         if (decisionValue == "ALLOW")
         {
             liveDecisionSummary->setStyleSheet(
@@ -3841,6 +4264,9 @@ if (liveDecisionProcess != nullptr &&
         return;
     }
 
+    // Preserve the complete accepted sample for the live session report.
+    liveSessionSamples.append(root);
+
     // Update tank volume and level.
     tankVolumeValueLabel->setText(
         QString("%1 / %2 L")
@@ -3859,11 +4285,11 @@ if (liveDecisionProcess != nullptr &&
     );
 
     // Update pump state and colour.
-pumpStatusValueLabel->setText(
+    pumpStatusValueLabel->setText(
     pumpOn ? "ON" : "OFF"
 );
 
-pumpStatusValueLabel->setStyleSheet(
+    pumpStatusValueLabel->setStyleSheet(
     pumpOn
         ? "color: #16a34a; font-size: 21px; font-weight: bold; border: none; background: transparent;"
         : "color: #dc2626; font-size: 21px; font-weight: bold; border: none; background: transparent;"
@@ -3903,9 +4329,9 @@ pumpStatusValueLabel->setStyleSheet(
     }
 
     // Update physics validation status and colour.
-validationValueLabel->setText(validationText);
+    validationValueLabel->setText(validationText);
 
-validationValueLabel->setStyleSheet(
+    validationValueLabel->setStyleSheet(
     validationText == "VALID"
         ? "color: #16a34a; font-size: 21px; font-weight: bold; border: none; background: transparent;"
         : "color: #dc2626; font-size: 21px; font-weight: bold; border: none; background: transparent;"
@@ -3920,10 +4346,10 @@ validationValueLabel->setStyleSheet(
     // UPDATE PHYSICS MONITORING - LIVE DATA
     // =========================================
 
-double valveOpening =
+    double valveOpening =
     processState.value("valve_opening_percent").toDouble(0.0);
 
-double flowRate =
+    double flowRate =
     processState.value("flow_rate_lpm").toDouble(inletFlow);
 
 // Update Physics Monitoring metric cards.
@@ -4058,7 +4484,7 @@ if (livePhysicsWarningLabel != nullptr)
             ++liveInvalidFrameCount;
         }
 
-        // Update scenario-specific traffic history.
+// Update scenario-specific traffic history.
 QString scenario = root.value("scenario").toString();
 
 if (scenario == "normal_filling")
@@ -4468,10 +4894,16 @@ else
               << "--interval"
               << "1";
 
-    lastLiveSampleAt = QDateTime::currentDateTime();
+// Initialise a new live session for report generation.
+liveSessionStartTime = QDateTime::currentDateTime();
+liveSessionScenario = scenario;
+liveSessionSamples = QJsonArray();
+liveSessionDecisions = QJsonArray();
 
-    // Start watchdog immediately, including during startup.
-    liveDataWatchdog->start();
+lastLiveSampleAt = QDateTime::currentDateTime();
+
+// Start watchdog immediately, including during startup.
+liveDataWatchdog->start();
 
     startSimulationButton->setEnabled(false);
     stopSimulationButton->setEnabled(true);
@@ -4486,6 +4918,9 @@ else
 
 void MainWindow::stopLiveSimulation()
 {
+    // Export captured evidence before resetting the live session.
+    exportLiveSessionReport();
+
     // Stop the watchdog first.
     if (liveDataWatchdog != nullptr)
         liveDataWatchdog->stop();

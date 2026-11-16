@@ -111,6 +111,7 @@ class LiveDecisionBridge:
             "source": "VoltGuard Live Decision Bridge",
             "data_source": "SIMULATION",
             "data_status": "LIVE",
+            "timestamp": sample.get("timestamp"),
             "sequence": sample.get("sequence"),
             "scenario": sample.get("scenario"),
             "frame_number": event.get("frame_number"),

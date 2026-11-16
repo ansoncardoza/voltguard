@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QByteArray>
 #include <QDateTime>
+#include <QJsonArray>
 
 class QStackedWidget;
 class QPushButton;
@@ -35,6 +36,12 @@ private:
     QTimer *liveDataWatchdog;
     QByteArray liveOutputBuffer;
     QDateTime lastLiveSampleAt;
+
+    // Live session report evidence
+    QDateTime liveSessionStartTime;
+    QString liveSessionScenario;
+    QJsonArray liveSessionSamples;
+    QJsonArray liveSessionDecisions;
 
     // Live decision bridge process
     QProcess *liveDecisionProcess;
@@ -137,6 +144,7 @@ private:
     // New live simulation methods
     void startLiveSimulation();
     void stopLiveSimulation();
+    void exportLiveSessionReport();
     void handleLiveOutput();
     void handleLiveDecisionOutput();
     void processLiveSample(const QByteArray &jsonLine);
