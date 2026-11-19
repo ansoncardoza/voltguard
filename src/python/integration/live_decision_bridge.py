@@ -90,14 +90,23 @@ class LiveDecisionBridge:
         elif status == "MALFORMED_HEX_INPUT":
             self.malformed_inputs += 1
 
+        # Evaluate only the current frame.
+        # Session counters remain cumulative for reporting.
+
         combined_report = {
             "parser_analysis": {
                 "summary": {
-                    "total_frames": self.total_frames,
-                    "valid_requests": self.valid_requests,
-                    "validation_failures": self.validation_failures,
-                    "invalid_frames": self.invalid_frames,
-                    "malformed_inputs": self.malformed_inputs,
+                    "total_frames": 1,
+                    "valid_requests": 1 if status == "VALID" else 0,
+                    "validation_failures": (
+                        1 if status == "VALIDATION_FAILED" else 0
+                    ),
+                    "invalid_frames": (
+                        1 if status == "INVALID_FRAME" else 0
+                    ),
+                    "malformed_inputs": (
+                        1 if status == "MALFORMED_HEX_INPUT" else 0
+                    ),
                 }
             },
             "physics_analysis": {

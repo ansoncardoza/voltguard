@@ -15,7 +15,6 @@ class QProgressBar;
 class QTimer;
 class QTableWidget;
 class LiveTankChart;
-class LiveTrafficChart;
 
 class MainWindow : public QMainWindow
 {
@@ -94,8 +93,9 @@ private:
     // Network Traffic live monitoring
     QLabel *trafficSummary;
     QTableWidget *trafficTable;
+    QLabel *trafficHistoryTitle;
+    QTableWidget *trafficHistoryTable;
     QLabel *frameDetails;
-    LiveTrafficChart *trafficChart;
 
     int liveTotalFrames = 0;
     int liveValidCount = 0;

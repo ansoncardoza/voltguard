@@ -144,9 +144,9 @@ def create_sample(
 
     scenario = SCENARIOS[scenario_name]
     modbus_event = create_modbus_event(
-    sequence,
-    SCENARIOS[scenario_name]["traffic_mode"],
-)
+        sequence,
+        scenario["traffic_mode"],
+    )
 
     tank_level = (tank_volume / capacity) * 100.0
 
@@ -252,6 +252,118 @@ def run_simulation(args):
         time.sleep(args.interval)
 
 
+
+
+def run_combined_simulation(args):
+    """Run all three simulation scenarios in one synchronized session."""
+
+    tank_configs = {
+        "normal_filling": TankConfig(
+            capacity_liters=1000.0,
+            initial_volume_liters=args.initial_level * 10.0,
+            simulation_duration_minutes=1.0,
+        ),
+        "pump_off_consumption": TankConfig(
+            capacity_liters=1000.0,
+            initial_volume_liters=args.initial_level * 10.0,
+            simulation_duration_minutes=1.0,
+        ),
+    }
+
+    tank_volumes = {
+        name: config.initial_volume_liters
+        for name, config in tank_configs.items()
+    }
+
+    sequence = 0
+    simulation_time = 0.0
+
+    previous_tick = time.monotonic()
+    start_time = previous_tick
+
+    while True:
+        current_tick = time.monotonic()
+        elapsed = current_tick - previous_tick
+        previous_tick = current_tick
+
+        if sequence > 0:
+            for scenario_name in (
+                "normal_filling",
+                "pump_off_consumption",
+            ):
+                scenario = SCENARIOS[scenario_name]
+
+                rates = tank_dynamics(
+                    simulation_time,
+                    [tank_volumes[scenario_name]],
+                    scenario["inflow_lpm"],
+                    scenario["outflow_lpm"],
+                )
+
+                tank_volumes[scenario_name] += (
+                    rates[0] * elapsed / 60.0
+                )
+
+                tank_volumes[scenario_name] = max(
+                    0.0,
+                    min(
+                        tank_configs[scenario_name].capacity_liters,
+                        tank_volumes[scenario_name],
+                    ),
+                )
+
+            simulation_time = current_tick - start_time
+
+        timestamp = datetime.now(timezone.utc).isoformat(
+            timespec="milliseconds"
+        ).replace("+00:00", "Z")
+
+        for scenario_name in (
+            "normal_filling",
+            "pump_off_consumption",
+            "invalid_traffic",
+        ):
+            sample = create_sample(
+                sequence=sequence,
+                simulation_time=simulation_time,
+                tank_volume=(
+                    tank_volumes.get(
+                        scenario_name,
+                        tank_volumes["normal_filling"],
+                    )
+                ),
+                capacity=1000.0,
+                scenario_name=scenario_name,
+            )
+
+            sample["timestamp"] = timestamp
+            sample["sequence"] = sequence * 3 + (
+                0 if scenario_name == "normal_filling"
+                else 1 if scenario_name == "pump_off_consumption"
+                else 2
+            )
+
+            sample["modbus"]["frame_number"] = (
+                sample["sequence"] + 1
+            )
+
+            sample["modbus"]["transaction_id"] = (
+                sample["sequence"] % 65536
+            )
+
+            print(json.dumps(sample), flush=True)
+
+        sequence += 1
+
+        if (
+            args.duration_seconds > 0
+            and simulation_time >= args.duration_seconds
+        ):
+            break
+
+        time.sleep(args.interval)
+    
+    
 def main():
     parser = argparse.ArgumentParser(
         description="VoltGuard continuous live simulation"
@@ -259,9 +371,9 @@ def main():
 
     parser.add_argument(
         "--scenario",
-        choices=list(SCENARIOS.keys()),
+        choices=list(SCENARIOS.keys()) + ["combined"],
         default="normal_filling",
-        help="Select the simulation scenario",
+        help="Select an individual or combined simulation scenario",
     )
 
     parser.add_argument(
@@ -297,7 +409,11 @@ def main():
         parser.error("--initial-level must be between 0 and 100")
 
     try:
-        run_simulation(args)
+        if args.scenario == "combined":
+            run_combined_simulation(args)
+        else:
+            run_simulation(args)
+
     except KeyboardInterrupt:
         print(
             "VoltGuard live simulation stopped.",

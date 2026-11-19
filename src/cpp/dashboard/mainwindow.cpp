@@ -1,6 +1,5 @@
 ﻿#include "mainwindow.h"
 #include "livetankchart.h"
-#include "livetrafficchart.h"
 
 #include <QProgressBar>
 #include <QProcess>
@@ -41,8 +40,8 @@ MainWindow::MainWindow(QWidget *parent)
       stackedWidget(nullptr),
       analysisProcess(nullptr),
       liveSimulationProcess(nullptr),
-      liveDecisionProcess(nullptr),
       liveDataWatchdog(nullptr),
+      liveDecisionProcess(nullptr),
       overviewButton(nullptr),
       networkButton(nullptr),
       protocolButton(nullptr),
@@ -70,11 +69,11 @@ MainWindow::MainWindow(QWidget *parent)
       physicsTankVisualizationValue(nullptr),
       physicsSnapshotInfo(nullptr),
       physicsValidationSummary(nullptr),
-      physicsViolationLabel(nullptr),
-      physicsWarningLabel(nullptr),
       livePhysicsValidationSummary(nullptr),
       livePhysicsViolationLabel(nullptr),
       livePhysicsWarningLabel(nullptr),
+      physicsViolationLabel(nullptr),
+      physicsWarningLabel(nullptr),
       trafficSummary(nullptr),
       trafficTable(nullptr),
       frameDetails(nullptr),
@@ -587,9 +586,10 @@ void MainWindow::createPages()
 
     controlLayout->addWidget(modeLabel);
     controlLayout->addWidget(liveScenarioSelector);
-    controlLayout->addStretch();
+    controlLayout->addSpacing(12);
     controlLayout->addWidget(startSimulationButton);
     controlLayout->addWidget(stopSimulationButton);
+    controlLayout->addStretch();
 
     overviewLayout->addWidget(controlPanel);
 
@@ -901,44 +901,36 @@ connect(
         "Loading traffic statistics..."
     );
 
-    trafficSummary->setStyleSheet(
-        "font-size: 15px;"
-        "font-weight: bold;"
-        "color: #334155;"
-        "background-color: transparent;"
-    );
 
-    // Live Modbus Traffic History Chart
-    trafficChart = new LiveTrafficChart(networkPage);
-
+    // Live Modbus Frame Table
     trafficTable = new QTableWidget();
 
     trafficTable->setColumnCount(5);
 
     trafficTable->setHorizontalHeaderLabels({
-        "Frame",
-        "Transaction ID",
-        "Function Code",
-        "Status",
-        "Validation Result"
+    "Frame",
+    "Transaction ID",
+    "Function Code",
+    "Status",
+    "Validation Result"
     });
 
     trafficTable->setEditTriggers(
-        QAbstractItemView::NoEditTriggers
+    QAbstractItemView::NoEditTriggers
     );
 
     trafficTable->setSelectionBehavior(
-        QAbstractItemView::SelectRows
+    QAbstractItemView::SelectRows
     );
 
     trafficTable->setSelectionMode(
-        QAbstractItemView::SingleSelection
+    QAbstractItemView::SingleSelection
     );
 
     trafficTable->verticalHeader()->setVisible(false);
 
     trafficTable->horizontalHeader()->setSectionResizeMode(
-        QHeaderView::ResizeToContents
+    QHeaderView::ResizeToContents
     );
 
     trafficTable->horizontalHeader()->setStretchLastSection(true);
@@ -969,7 +961,74 @@ connect(
     "border: 1px solid #475569;"
     "font-weight: bold;"
     "}"
-     );
+    );
+
+    // Network Traffic History
+    trafficHistoryTitle = new QLabel("Network Traffic History");
+
+    trafficHistoryTitle->setStyleSheet(
+    "font-size: 17px;"
+    "font-weight: bold;"
+    "color: #0f172a;"
+    "background-color: transparent;"
+    );
+
+    trafficHistoryTable = new QTableWidget();
+
+    trafficHistoryTable->setColumnCount(5);
+
+    trafficHistoryTable->setHorizontalHeaderLabels({
+    "Timestamp",
+    "Scenario",
+    "Frame",
+    "Status",
+    "Validation Result"
+    });
+
+    trafficHistoryTable->setEditTriggers(
+    QAbstractItemView::NoEditTriggers
+    );
+
+    trafficHistoryTable->setSelectionBehavior(
+    QAbstractItemView::SelectRows
+    );
+
+    trafficHistoryTable->setSelectionMode(
+    QAbstractItemView::SingleSelection
+    );
+
+    trafficHistoryTable->verticalHeader()->setVisible(false);
+
+    trafficHistoryTable->horizontalHeader()->setSectionResizeMode(
+    QHeaderView::ResizeToContents
+    );
+
+    trafficHistoryTable->horizontalHeader()->setStretchLastSection(true);
+
+    trafficHistoryTable->setMinimumHeight(120);
+    trafficHistoryTable->setMaximumHeight(180);
+    trafficHistoryTable->setShowGrid(true);
+    trafficHistoryTable->setAlternatingRowColors(true);
+
+    trafficHistoryTable->setStyleSheet(
+    "QTableWidget {"
+    "background-color: #1e293b;"
+    "color: #f1f5f9;"
+    "gridline-color: #475569;"
+    "border: 1px solid #475569;"
+    "font-size: 12px;"
+    "}"
+    "QTableWidget::item {"
+    "padding: 5px;"
+    "}"
+    "QHeaderView::section {"
+    "background-color: #334155;"
+    "color: #ffffff;"
+    "padding: 7px;"
+    "border: 1px solid #475569;"
+    "font-weight: bold;"
+    "}"
+    );
 
     QLabel *frameDetailsTitle = new QLabel("Selected Frame Details");
 
@@ -995,8 +1054,9 @@ connect(
     networkLayout->addWidget(networkTitle);
     networkLayout->addWidget(networkSubtitle);
     networkLayout->addWidget(trafficSummary);
-    networkLayout->addWidget(trafficChart);
     networkLayout->addWidget(trafficTable, 1);
+    networkLayout->addWidget(trafficHistoryTitle);
+    networkLayout->addWidget(trafficHistoryTable);
     networkLayout->addWidget(frameDetailsTitle);
     networkLayout->addWidget(frameDetails);
 
@@ -2116,9 +2176,6 @@ reportPath = QDir::cleanPath(reportPath);
                         tankVisualizationValue->setText(
                         "Tank Level: " + QString::number(level, 'f', 1) + "%"
                     );
-
-                    bool pump =
-                        process.value("pump_on").toBool();
 
                     double valve =
                         process.value("valve_opening_percent").toDouble();
@@ -3967,9 +4024,6 @@ void MainWindow::handleLiveDecisionOutput()
 
         QJsonObject root = document.object();
 
-        // Preserve each valid decision event for the live session report.
-liveSessionDecisions.append(root);
-
         if (root.value("data_status").toString() == "ERROR")
         {
             liveDecisionSummary->setText(
@@ -3979,11 +4033,28 @@ liveSessionDecisions.append(root);
             continue;
         }
 
+        // Preserve each valid decision event for the live session report.
+        liveSessionDecisions.append(root);
+
         QJsonObject decision =
             root.value("decision_analysis").toObject();
 
         QString decisionValue =
             decision.value("decision").toString("UNKNOWN");
+        
+        // Add the decision outcome to the unified live timeline.
+        if (tankLevelChart != nullptr)
+        {
+            tankLevelChart->addEvent(
+                root.value("timestamp").toString(),
+                "DECISION",
+                "Frame " +
+                    QString::number(root.value("frame_number").toInt()) +
+                    " | Decision " + decisionValue,
+                decisionValue,
+                root.value("sequence").toInt()
+            );
+        }
 
         QString interpretation =
             decision.value("interpretation").toString();
@@ -4335,13 +4406,39 @@ if (liveDecisionProcess != nullptr &&
     validationText == "VALID"
         ? "color: #16a34a; font-size: 21px; font-weight: bold; border: none; background: transparent;"
         : "color: #dc2626; font-size: 21px; font-weight: bold; border: none; background: transparent;"
-);
+    );
+
+// Record the actual physics validation event.
+if (tankLevelChart != nullptr)
+{
+    QString validationDetails = validationText;
+
+    for (const QJsonValue &item : violations)
+    {
+        validationDetails += " | " + item.toString();
+    }
+
+    for (const QJsonValue &item : warnings)
+    {
+        validationDetails += " | " + item.toString();
+    }
+}
 
     // Add the latest level to the live chart.
     QString scenario =
     root.value("scenario").toString();
 
-    tankLevelChart->addDataPoint(scenario, level);
+    tankLevelChart->addDataPoint(
+    scenario,
+    root.value("timestamp").toString(),
+    root.value("sequence").toInt(),
+    level,
+    volume,
+    inletFlow,
+    outletFlow,
+    pumpOn
+    );  
+
     // =========================================
     // UPDATE PHYSICS MONITORING - LIVE DATA
     // =========================================
@@ -4437,7 +4534,30 @@ for (const QJsonValue &item : warnings)
 {
     warningMessages.append(item.toString());
 }
+// Record the actual physics validation event.
+if (tankLevelChart != nullptr)
+{
+    QString validationDetails = validationText;
 
+    if (!violationMessages.isEmpty())
+    {
+        validationDetails += " | " +
+            violationMessages.join("; ");
+    }
+    else if (!warningMessages.isEmpty())
+    {
+        validationDetails += " | " +
+            warningMessages.join("; ");
+    }
+
+    tankLevelChart->addEvent(
+        root.value("timestamp").toString(),
+        "PHYSICS",
+        validationDetails,
+        validationText,
+        root.value("sequence").toInt()
+    );
+}
 if (livePhysicsViolationLabel != nullptr)
 {
     livePhysicsViolationLabel->setText(
@@ -4458,13 +4578,44 @@ if (livePhysicsWarningLabel != nullptr)
 
     // Read the synthetic Modbus event.
     QJsonObject modbusEvent =
-        root.value("modbus").toObject();
+    root.value("modbus").toObject();
 
-    // Process live Modbus data independently of the Network Traffic table.
-    if (root.value("modbus").isObject() &&
-        modbusEvent.value("data_source").toString() == "SIMULATION" &&
-        modbusEvent.value("data_status").toString() == "LIVE")
+// Process live Modbus data independently of the Network Traffic table.
+if (root.value("modbus").isObject() &&
+    modbusEvent.value("data_source").toString() == "SIMULATION" &&
+    modbusEvent.value("data_status").toString() == "LIVE")
+{
+    // Record the actual Modbus frame event.
+    if (tankLevelChart != nullptr)
     {
+        const QString eventTimestamp =
+            root.value("timestamp").toString();
+
+        const int eventSequence =
+            root.value("sequence").toInt();
+
+        const int frameNumber =
+            modbusEvent.value("frame_number").toInt();
+
+        const int functionCode =
+            modbusEvent.value("function_code").toInt();
+
+        const QString frameStatus =
+            modbusEvent.value("status").toString();
+
+        const QString frameReason =
+            modbusEvent.value("reason").toString();
+
+        tankLevelChart->addEvent(
+            eventTimestamp,
+            "MODBUS",
+            "Frame " + QString::number(frameNumber) +
+                " | FC" + QString::number(functionCode) +
+                " | " + frameReason,
+            frameStatus,
+            eventSequence
+        );
+    }
         // Update live Modbus traffic counters.
         ++liveTotalFrames;
 
@@ -4485,8 +4636,6 @@ if (livePhysicsWarningLabel != nullptr)
         }
 
 // Update scenario-specific traffic history.
-QString scenario = root.value("scenario").toString();
-
 if (scenario == "normal_filling")
 {
     if (liveStatus == "VALID")
@@ -4495,16 +4644,6 @@ if (scenario == "normal_filling")
         ++normalLiveValidationFailureCount;
     else if (liveStatus == "INVALID_FRAME")
         ++normalLiveInvalidCount;
-
-    if (trafficChart != nullptr)
-    {
-        trafficChart->addDataPoint(
-            scenario,
-            normalLiveValidCount,
-            normalLiveValidationFailureCount,
-            normalLiveInvalidCount
-        );
-    }
 }
 else if (scenario == "pump_off_consumption")
 {
@@ -4514,16 +4653,6 @@ else if (scenario == "pump_off_consumption")
         ++pumpOffLiveValidationFailureCount;
     else if (liveStatus == "INVALID_FRAME")
         ++pumpOffLiveInvalidCount;
-
-    if (trafficChart != nullptr)
-    {
-        trafficChart->addDataPoint(
-            scenario,
-            pumpOffLiveValidCount,
-            pumpOffLiveValidationFailureCount,
-            pumpOffLiveInvalidCount
-        );
-    }
 }
 else if (scenario == "invalid_traffic")
 {
@@ -4533,16 +4662,6 @@ else if (scenario == "invalid_traffic")
         ++invalidTrafficValidationFailureCount;
     else if (liveStatus == "INVALID_FRAME")
         ++invalidTrafficInvalidCount;
-
-    if (trafficChart != nullptr)
-    {
-        trafficChart->addDataPoint(
-            scenario,
-            invalidTrafficValidCount,
-            invalidTrafficValidationFailureCount,
-            invalidTrafficInvalidCount
-        );
-    }
 }
 
         // Update live Protocol Analysis counters.
@@ -4761,6 +4880,64 @@ else if (scenario == "invalid_traffic")
             }
 
             trafficTable->scrollToBottom();
+
+            // Append the actual live event to Network Traffic History.
+if (trafficHistoryTable != nullptr)
+{
+    int historyRow = trafficHistoryTable->rowCount();
+
+    trafficHistoryTable->insertRow(historyRow);
+
+    QString timestamp =
+        modbusEvent.value("timestamp").toString();
+
+    if (timestamp.isEmpty())
+    {
+        timestamp = root.value("timestamp").toString();
+    }
+
+    int frameNumber =
+        modbusEvent.value("frame_number").toInt();
+
+    QStringList historyValues = {
+        timestamp,
+        scenario,
+        QString("LIVE #%1").arg(frameNumber),
+        liveStatus,
+        modbusEvent.value("reason").toString()
+    };
+
+    for (int column = 0; column < historyValues.size(); ++column)
+    {
+        trafficHistoryTable->setItem(
+            historyRow,
+            column,
+            new QTableWidgetItem(historyValues.at(column))
+        );
+    }
+
+    // Apply status-based highlighting.
+    QTableWidgetItem *historyStatusItem =
+        trafficHistoryTable->item(historyRow, 3);
+
+    if (liveStatus == "VALID")
+    {
+        historyStatusItem->setBackground(QColor("#dcfce7"));
+        historyStatusItem->setForeground(QColor("#166534"));
+    }
+    else if (liveStatus == "VALIDATION_FAILED")
+    {
+        historyStatusItem->setBackground(QColor("#fef3c7"));
+        historyStatusItem->setForeground(QColor("#92400e"));
+    }
+    else if (liveStatus == "INVALID_FRAME")
+    {
+        historyStatusItem->setBackground(QColor("#fee2e2"));
+        historyStatusItem->setForeground(QColor("#991b1b"));
+    }
+
+    trafficHistoryTable->scrollToBottom();
+}
         }
     }
 
@@ -4809,16 +4986,7 @@ void MainWindow::startLiveSimulation()
         return;
     }
 
-    QString scenario =
-        liveScenarioSelector->currentData().toString();
-
-    if (scenario.isEmpty())
-    {
-        liveConnectionLabel->setText(
-            "ERROR: No simulation scenario selected."
-        );
-        return;
-    }
+    const QString scenario = "combined";
 
     // Reset the previous live session.
     liveOutputBuffer.clear();
@@ -4830,7 +4998,8 @@ void MainWindow::startLiveSimulation()
     "font-weight: bold;"
     );
     liveScenarioLabel->setText(
-    "Selected Scenario: " + liveScenarioSelector->currentText()
+    "Active Scenarios: Normal Filling | "
+    "Pump OFF Consumption | Invalid Traffic"
     );
 
     tankVolumeValueLabel->setText("--");
